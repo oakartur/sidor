@@ -471,11 +471,26 @@ p {
   overflow: auto;
 }
 
-.compact-list span {
+.compact-list > span,
+.port-line {
   border-bottom: 1px solid #eef3f0;
   color: #3e4b45;
   font-size: 13px;
   padding-bottom: 6px;
+}
+
+.port-line {
+  background: transparent;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 40px 1fr 62px 80px;
+  min-height: auto;
+  padding: 0 0 6px;
+  text-align: left;
 }
 
 .form-actions {

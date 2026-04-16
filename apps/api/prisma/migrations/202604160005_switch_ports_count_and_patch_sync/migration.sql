@@ -1,0 +1,2 @@
+ALTER TABLE "equipamentos"
+  ADD COLUMN "qtd_portas" INTEGER NOT NULL DEFAULT 28;

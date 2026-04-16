@@ -9,6 +9,11 @@ export interface TemplateWorkbook {
   sheets: Map<string, string>;
 }
 
+export type CellPatchValue = string | number | null | {
+  value: string | number | null;
+  styleRef?: { sheetName: string; cellRef: string };
+};
+
 interface ZipEntry {
   name: string;
   data: Buffer;
@@ -52,14 +57,15 @@ export function loadWorkbookFromBuffer(buffer: Buffer): TemplateWorkbook {
   };
 }
 
-export function patchWorkbook(workbook: TemplateWorkbook, sheetPatches: Map<string, Record<string, string | number | null>>) {
+export function patchWorkbook(workbook: TemplateWorkbook, sheetPatches: Map<string, Record<string, CellPatchValue>>) {
   const replacements = new Map<string, Buffer>();
+  const styleLookup = buildStyleLookup(workbook);
   for (const [sheetName, cells] of sheetPatches) {
     const target = workbook.sheets.get(sheetName);
     if (!target) continue;
     const entry = workbook.entries.find((item) => item.name === target);
     if (!entry) continue;
-    replacements.set(target, Buffer.from(patchWorksheetXml(entry.data.toString("utf8"), cells), "utf8"));
+    replacements.set(target, Buffer.from(patchWorksheetXml(entry.data.toString("utf8"), cells, styleLookup), "utf8"));
   }
 
   const workbookXml = workbook.entries.find((item) => item.name === "xl/workbook.xml");
@@ -109,12 +115,26 @@ function readSharedStrings(workbook: TemplateWorkbook) {
   return [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((match) => unescapeXml([...match[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((text) => text[1]).join("")));
 }
 
-export function patchWorksheetXml(xml: string, cells: Record<string, string | number | null>) {
+export function patchWorksheetXml(xml: string, cells: Record<string, CellPatchValue>, styleLookup = new Map<string, string>()) {
   let output = xml;
   for (const [ref, value] of Object.entries(cells)) {
-    output = patchExistingCell(output, ref, value);
+    output = patchExistingCell(output, ref, value, styleLookup);
   }
   return output;
+}
+
+function buildStyleLookup(workbook: TemplateWorkbook) {
+  const lookup = new Map<string, string>();
+  for (const [sheetName, target] of workbook.sheets) {
+    const entry = workbook.entries.find((item) => item.name === target);
+    if (!entry) continue;
+    for (const cell of entry.data.toString("utf8").matchAll(/<c\b([^>]*)/g)) {
+      const ref = cell[1].match(/\br="([^"]+)"/)?.[1];
+      const style = cell[1].match(/\bs="([^"]+)"/)?.[1];
+      if (ref && style) lookup.set(`${sheetName}!${ref}`, style);
+    }
+  }
+  return lookup;
 }
 
 function parseSheetTargets(workbookXml: string, relsXml: string) {
@@ -132,10 +152,12 @@ function parseSheetTargets(workbookXml: string, relsXml: string) {
   return sheets;
 }
 
-function patchExistingCell(xml: string, ref: string, value: string | number | null) {
+function patchExistingCell(xml: string, ref: string, patch: CellPatchValue, styleLookup: Map<string, string>) {
   const cellPattern = new RegExp(`<c\\b([^>]*\\br="${escapeRegExp(ref)}"[^>]*)>(?:[\\s\\S]*?)<\\/c>`);
   const selfClosingPattern = new RegExp(`<c\\b([^>]*\\br="${escapeRegExp(ref)}"[^>]*)\\/>`);
-  const replacement = (attributes: string) => buildCellXml(ref, value, readStyle(attributes));
+  const value = normalizePatchValue(patch);
+  const style = normalizePatchStyle(patch, styleLookup);
+  const replacement = (attributes: string) => buildCellXml(ref, value, style ?? readStyle(attributes));
   if (cellPattern.test(xml)) {
     return xml.replace(cellPattern, (_match, attributes: string) => replacement(attributes));
   }
@@ -143,6 +165,15 @@ function patchExistingCell(xml: string, ref: string, value: string | number | nu
     return xml.replace(selfClosingPattern, (_match, attributes: string) => replacement(attributes));
   }
   return xml;
+}
+
+function normalizePatchValue(patch: CellPatchValue) {
+  return typeof patch === "object" && patch !== null && "value" in patch ? patch.value : patch;
+}
+
+function normalizePatchStyle(patch: CellPatchValue, styleLookup: Map<string, string>) {
+  if (typeof patch !== "object" || patch === null || !("styleRef" in patch) || !patch.styleRef) return undefined;
+  return styleLookup.get(`${patch.styleRef.sheetName}!${patch.styleRef.cellRef}`);
 }
 
 function buildCellXml(ref: string, value: string | number | null, style?: string) {

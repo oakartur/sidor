@@ -15,7 +15,7 @@ import {
   generateVlans,
   parseIpv4Cidr
 } from "@sidor/domain";
-import { loadTemplateWorkbook, loadWorkbookFromBuffer, patchWorkbook, readSheetCells } from "./xlsx-template.js";
+import { type CellPatchValue, loadTemplateWorkbook, loadWorkbookFromBuffer, patchWorkbook, readSheetCells } from "./xlsx-template.js";
 
 const prisma = new PrismaClient();
 const logger = pino({ level: process.env.LOG_LEVEL ?? "info" });
@@ -300,6 +300,7 @@ app.post("/api/racks/:rackId/switches/generate", requireRole("ADMIN", "OPERADOR"
       ordemNoRack: item.ordemNoRack,
       ordemGlobal: item.ordemGlobal,
       papelSwitch: item.papelSwitch,
+      qtdPortas: 28,
       ativo: true
     }))
   });
@@ -317,6 +318,7 @@ const equipmentManualSchema = z.object({
   ordemNoRack: z.number().int().positive(),
   ordemGlobal: z.number().int().positive(),
   papelSwitch: z.string().min(1),
+  qtdPortas: z.number().int().min(1).max(48).default(28),
   observacao: z.string().optional().nullable(),
   ativo: z.boolean().default(true)
 });
@@ -499,9 +501,10 @@ app.get("/api/sites/:siteId/switch-ports", asyncHandler(async (req, res) => {
 }));
 
 app.post("/api/equipamentos/:equipamentoId/ports/template", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
-  const schema = z.object({ quantidade: z.number().int().min(1).max(48).default(28) });
-  const { quantidade } = schema.parse(req.body ?? {});
+  const schema = z.object({ quantidade: z.number().int().min(1).max(48).optional() });
+  const input = schema.parse(req.body ?? {});
   const equipamento = await prisma.equipamento.findUniqueOrThrow({ where: { id: req.params.equipamentoId } });
+  const quantidade = input.quantidade ?? equipamento.qtdPortas;
   const data = Array.from({ length: quantidade }, (_, index) => ({
     equipamentoId: equipamento.id,
     portaNum: index + 1,
@@ -509,13 +512,19 @@ app.post("/api/equipamentos/:equipamentoId/ports/template", requireRole("ADMIN",
     descricao: "VAGO",
     status: "VAGO"
   }));
+  await prisma.equipamento.update({ where: { id: equipamento.id }, data: { qtdPortas: quantidade } });
   const created = await prisma.switchPort.createMany({ data, skipDuplicates: true });
+  const ports = await prisma.switchPort.findMany({ where: { equipamentoId: equipamento.id, portaNum: { lte: quantidade } } });
+  for (const port of ports) {
+    await syncPatchPanelForSwitchPort(port.id);
+  }
   await audit(req, "switch_ports", equipamento.id, "GENERATE_PORTS", null, data);
   res.status(201).json({ created: created.count });
 }));
 
 app.post("/api/switch-ports", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
   const port = await prisma.switchPort.create({ data: switchPortSchema.parse(req.body) });
+  await syncPatchPanelForSwitchPort(port.id);
   await audit(req, "switch_ports", port.id, "CREATE", null, port);
   res.status(201).json(port);
 }));
@@ -523,12 +532,14 @@ app.post("/api/switch-ports", requireRole("ADMIN", "OPERADOR"), asyncHandler(asy
 app.put("/api/switch-ports/:portId", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
   const before = await prisma.switchPort.findUniqueOrThrow({ where: { id: req.params.portId } });
   const after = await prisma.switchPort.update({ where: { id: req.params.portId }, data: switchPortSchema.partial().parse(req.body) });
+  await syncPatchPanelForSwitchPort(after.id);
   await audit(req, "switch_ports", after.id, "UPDATE", before, after, req.body?.motivo);
   res.json(after);
 }));
 
 app.delete("/api/switch-ports/:portId", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
   const before = await prisma.switchPort.findUniqueOrThrow({ where: { id: req.params.portId } });
+  await prisma.patchPanelPort.deleteMany({ where: { switchPortId: before.id } });
   await prisma.switchPort.delete({ where: { id: req.params.portId } });
   await audit(req, "switch_ports", before.id, "DELETE", before, null);
   res.json({ ok: true });
@@ -848,18 +859,64 @@ async function loadFullSite(siteId: string) {
   });
 }
 
-function buildDocumentationPatches(site: Awaited<ReturnType<typeof loadFullSite>>) {
-  const patches = new Map<string, Record<string, string | number | null>>();
-  const redes: Record<string, string | number | null> = {};
-  const base: Record<string, string | number | null> = {};
-  const sw: Record<string, string | number | null> = {};
-  const patch: Record<string, string | number | null> = {};
-  const telefonia: Record<string, string | number | null> = {};
+async function syncPatchPanelForSwitchPort(portId: string) {
+  const port = await prisma.switchPort.findUniqueOrThrow({
+    where: { id: portId },
+    include: { equipamento: true }
+  });
+  const panel = await prisma.patchPanel.upsert({
+    where: { siteId_nome: { siteId: port.equipamento.siteId, nome: `PATCH-PANEL ${port.equipamento.hostname}` } },
+    update: {
+      rackId: port.equipamento.rackId,
+      rackNum: port.equipamento.rackNum,
+      descricao: `Replicado de ${port.equipamento.hostname}`
+    },
+    create: {
+      siteId: port.equipamento.siteId,
+      rackId: port.equipamento.rackId,
+      rackNum: port.equipamento.rackNum,
+      nome: `PATCH-PANEL ${port.equipamento.hostname}`,
+      descricao: `Replicado de ${port.equipamento.hostname}`
+    }
+  });
+  await prisma.patchPanelPort.upsert({
+    where: { patchPanelId_portaNum: { patchPanelId: panel.id, portaNum: port.portaNum } },
+    update: {
+      switchPortId: port.id,
+      descricao: port.descricao ?? "VAGO",
+      ativo: true
+    },
+    create: {
+      patchPanelId: panel.id,
+      switchPortId: port.id,
+      portaNum: port.portaNum,
+      descricao: port.descricao ?? "VAGO",
+      ativo: true
+    }
+  });
+}
 
+function buildDocumentationPatches(site: Awaited<ReturnType<typeof loadFullSite>>) {
+  const patches = new Map<string, Record<string, CellPatchValue>>();
+  const redes: Record<string, CellPatchValue> = {};
+  const base: Record<string, CellPatchValue> = {};
+  const sw: Record<string, CellPatchValue> = {};
+  const patch: Record<string, CellPatchValue> = {};
+  const telefonia: Record<string, CellPatchValue> = {};
+
+  for (let row = 3; row <= 21; row += 1) {
+    ["A", "B", "C", "D", "E", "F"].forEach((col) => { redes[`${col}${row}`] = null; });
+  }
+  for (let row = 25; row <= 43; row += 1) {
+    ["A", "B", "C", "D", "E"].forEach((col) => { redes[`${col}${row}`] = null; });
+  }
+  for (let row = 47; row <= 65; row += 1) {
+    ["A", "B", "C", "D", "E"].forEach((col) => { redes[`${col}${row}`] = null; });
+  }
   site.vlans.slice(0, 19).forEach((vlan, index) => {
-    const row = 3 + index;
-    const dhcpRow = 25 + index;
-    const accessRow = 47 + index;
+    const row = vlan.vlanId >= 1 && vlan.vlanId <= 19 ? 2 + vlan.vlanId : 3 + index;
+    const dhcpRow = vlan.vlanId >= 1 && vlan.vlanId <= 19 ? 24 + vlan.vlanId : 25 + index;
+    const accessRow = vlan.vlanId >= 1 && vlan.vlanId <= 19 ? 46 + vlan.vlanId : 47 + index;
     redes[`A${row}`] = vlan.vlanId;
     redes[`B${row}`] = vlan.vlanNome;
     redes[`C${row}`] = vlan.redeCidr;
@@ -929,12 +986,13 @@ function buildDocumentationPatches(site: Awaited<ReturnType<typeof loadFullSite>
   site.equipamentos.slice(0, switchBlocks.length).forEach((equipment, index) => {
     const block = switchBlocks[index];
     sw[block.title] = `${equipment.papelSwitch === "CORE" ? "SWITCH CORE" : "SWITCH"} - ${equipment.ipGerenciamento}`;
-    equipment.portas.slice(0, 28).forEach((port, portIndex) => {
+    equipment.portas.slice(0, equipment.qtdPortas).forEach((port, portIndex) => {
       const row = 4 + portIndex;
-      sw[`${block.port}${row}`] = port.portaNum;
-      sw[`${block.desc}${row}`] = port.descricao ?? "VAGO";
-      sw[`${block.status}${row}`] = port.status;
-      sw[`${block.vlan}${row}`] = port.vlan?.vlanId ?? null;
+      const styleRef = vlanStyleRef(port.vlan?.vlanId);
+      sw[`${block.port}${row}`] = withStyle(port.portaNum, styleRef);
+      sw[`${block.desc}${row}`] = withStyle(port.descricao ?? "VAGO", styleRef);
+      sw[`${block.status}${row}`] = withStyle(port.status, styleRef);
+      sw[`${block.vlan}${row}`] = withStyle(port.vlan?.vlanId ?? null, styleRef);
     });
   });
 
@@ -945,8 +1003,10 @@ function buildDocumentationPatches(site: Awaited<ReturnType<typeof loadFullSite>
     patch[titleCells[panelIndex]] = panel.nome;
     panel.portas.slice(0, 24).forEach((port, index) => {
       const row = 4 + index;
-      patch[`${portColumns[panelIndex]}${row}`] = port.portaNum;
-      patch[`${descColumns[panelIndex]}${row}`] = port.descricao ?? "VAGO";
+      const switchPort = site.equipamentos.flatMap((equipment) => equipment.portas).find((item) => item.id === port.switchPortId);
+      const styleRef = vlanStyleRef(switchPort?.vlan?.vlanId);
+      patch[`${portColumns[panelIndex]}${row}`] = withStyle(port.portaNum, styleRef);
+      patch[`${descColumns[panelIndex]}${row}`] = withStyle(port.descricao ?? "VAGO", styleRef);
     });
   });
 
@@ -1162,15 +1222,15 @@ async function importDocumentation(siteId: string, parsed: ParsedDocumentation) 
       });
       rackByNum.set(rackNum, rack);
     }
-    const equipmentRecords: Array<{ id: string; rackNum: number }> = [];
+    const equipmentRecords: Array<{ id: string; rackNum: number; hostname: string }> = [];
     for (const equipment of parsed.equipamentos) {
       const rack = rackByNum.get(equipment.rackNum);
       if (!rack) continue;
       const ordemNoRack = equipmentRecords.filter((item) => item.rackNum === equipment.rackNum).length + 1;
       const record = await tx.equipamento.upsert({
         where: { siteId_hostname: { siteId, hostname: equipment.hostname } },
-        update: { ...equipment, ordemNoRack, rackId: rack.id, localRack: rack.localRack, tipoEquipamento: "SWITCH", ativo: true },
-        create: { ...equipment, ordemNoRack, siteId, rackId: rack.id, localRack: rack.localRack, tipoEquipamento: "SWITCH", ativo: true }
+        update: { ...equipment, ordemNoRack, rackId: rack.id, localRack: rack.localRack, tipoEquipamento: "SWITCH", qtdPortas: 28, ativo: true },
+        create: { ...equipment, ordemNoRack, siteId, rackId: rack.id, localRack: rack.localRack, tipoEquipamento: "SWITCH", qtdPortas: 28, ativo: true }
       });
       equipmentRecords.push(record);
     }
@@ -1178,10 +1238,20 @@ async function importDocumentation(siteId: string, parsed: ParsedDocumentation) 
     for (const port of parsed.ports) {
       const equipment = equipmentRecords[port.equipmentIndex];
       if (!equipment) continue;
-      await tx.switchPort.upsert({
+      const portRecord = await tx.switchPort.upsert({
         where: { equipamentoId_portaNum: { equipamentoId: equipment.id, portaNum: port.portaNum } },
         update: { descricao: port.descricao, status: port.status, vlanId: port.vlanId ? vlanById.get(port.vlanId)?.id : undefined, ordem: port.portaNum },
         create: { equipamentoId: equipment.id, portaNum: port.portaNum, descricao: port.descricao, status: port.status, vlanId: port.vlanId ? vlanById.get(port.vlanId)?.id : undefined, ordem: port.portaNum }
+      });
+      const panel = await tx.patchPanel.upsert({
+        where: { siteId_nome: { siteId, nome: `PATCH-PANEL ${equipment.hostname}` } },
+        update: { rackNum: equipment.rackNum, descricao: `Replicado de ${equipment.hostname}` },
+        create: { siteId, nome: `PATCH-PANEL ${equipment.hostname}`, rackNum: equipment.rackNum, descricao: `Replicado de ${equipment.hostname}` }
+      });
+      await tx.patchPanelPort.upsert({
+        where: { patchPanelId_portaNum: { patchPanelId: panel.id, portaNum: port.portaNum } },
+        update: { switchPortId: portRecord.id, descricao: port.descricao, ativo: true },
+        create: { patchPanelId: panel.id, switchPortId: portRecord.id, portaNum: port.portaNum, descricao: port.descricao, ativo: true }
       });
       portas += 1;
     }
@@ -1227,6 +1297,15 @@ function formatScopeForExcel(scope: string) {
   if (scope === "IP_FIXO") return "IP FIXO";
   if (scope === "DHCP_RELAY") return "DHCP RELAY";
   return "DHCP";
+}
+
+function vlanStyleRef(vlanId?: number | null) {
+  if (!vlanId || vlanId < 1 || vlanId > 19) return undefined;
+  return { sheetName: "Redes", cellRef: `A${2 + vlanId}` };
+}
+
+function withStyle(value: string | number | null, styleRef?: { sheetName: string; cellRef: string }): CellPatchValue {
+  return styleRef ? { value, styleRef } : value;
 }
 
 function normalizePortStatus(status: string, descricao: string) {

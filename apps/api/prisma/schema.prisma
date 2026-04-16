@@ -108,6 +108,7 @@ model Equipamento {
   ordemNoRack     Int      @map("ordem_no_rack")
   ordemGlobal     Int      @map("ordem_global")
   papelSwitch     String   @map("papel_switch")
+  qtdPortas       Int      @default(28) @map("qtd_portas")
   observacao      String?
   editadoManual   Boolean  @default(false) @map("editado_manual")
   ativo           Boolean  @default(true)

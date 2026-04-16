@@ -67,6 +67,7 @@ interface Equipamento {
   ordemNoRack: number;
   ordemGlobal: number;
   papelSwitch: string;
+  qtdPortas: number;
   observacao?: string | null;
   editadoManual?: boolean;
   ativo: boolean;
@@ -218,6 +219,7 @@ export function App() {
   const [switchPreview, setSwitchPreview] = useState<GeneratedSwitch[]>([]);
   const [selectedRackId, setSelectedRackId] = useState("");
   const [editingVlanId, setEditingVlanId] = useState("");
+  const [editingPortId, setEditingPortId] = useState("");
   const [vlanForm, setVlanForm] = useState({
     vlanId: 1,
     vlanNome: "",
@@ -239,6 +241,7 @@ export function App() {
     ordemNoRack: 1,
     ordemGlobal: 1,
     papelSwitch: "ACCESS",
+    qtdPortas: 28,
     observacao: "",
     ativo: true
   });
@@ -530,6 +533,7 @@ export function App() {
         ordemNoRack: equipmentForm.ordemNoRack,
         ordemGlobal: equipmentForm.ordemGlobal,
         papelSwitch: equipmentForm.papelSwitch,
+        qtdPortas: equipmentForm.qtdPortas,
         observacao: equipmentForm.observacao || null,
         ativo: equipmentForm.ativo
       })
@@ -562,6 +566,7 @@ export function App() {
       ordemNoRack: equipment.ordemNoRack,
       ordemGlobal: equipment.ordemGlobal,
       papelSwitch: equipment.papelSwitch,
+      qtdPortas: equipment.qtdPortas ?? 28,
       observacao: equipment.observacao ?? "",
       ativo: equipment.ativo
     });
@@ -578,6 +583,7 @@ export function App() {
       ordemNoRack: 1,
       ordemGlobal: 1,
       papelSwitch: "ACCESS",
+      qtdPortas: 28,
       observacao: "",
       ativo: true
     });
@@ -638,8 +644,8 @@ export function App() {
   async function createSwitchPort(event: FormEvent) {
     event.preventDefault();
     if (!siteDetail) return;
-    await api("/api/switch-ports", {
-      method: "POST",
+    await api(editingPortId ? `/api/switch-ports/${editingPortId}` : "/api/switch-ports", {
+      method: editingPortId ? "PUT" : "POST",
       body: JSON.stringify({
         equipamentoId: portForm.equipamentoId,
         vlanId: portForm.vlanId || null,
@@ -649,13 +655,40 @@ export function App() {
         ordem: portForm.portaNum
       })
     });
-    setPortForm({ ...portForm, portaNum: portForm.portaNum + 1, descricao: "" });
+    const wasEditing = Boolean(editingPortId);
+    setEditingPortId("");
+    setPortForm({ ...portForm, portaNum: wasEditing ? portForm.portaNum : portForm.portaNum + 1, descricao: wasEditing ? portForm.descricao : "" });
     await loadSiteDetail(siteDetail.id);
   }
 
-  async function generatePortTemplate(equipmentId: string) {
+  async function generatePortTemplate(equipment: Equipamento) {
     if (!siteDetail) return;
-    await api(`/api/equipamentos/${equipmentId}/ports/template`, { method: "POST", body: JSON.stringify({ quantidade: 28 }) });
+    await api(`/api/equipamentos/${equipment.id}/ports/template`, { method: "POST", body: JSON.stringify({ quantidade: equipment.qtdPortas ?? 28 }) });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  function editSwitchPort(port: SwitchPort) {
+    setEditingPortId(port.id);
+    setPortForm({
+      equipamentoId: port.equipamentoId,
+      portaNum: port.portaNum,
+      descricao: port.descricao ?? "",
+      status: port.status,
+      vlanId: port.vlanId ?? ""
+    });
+  }
+
+  function cancelPortEdit() {
+    setEditingPortId("");
+    setPortForm({ equipamentoId: siteDetail?.equipamentos?.[0]?.id ?? "", portaNum: 1, descricao: "", status: "UP", vlanId: siteDetail?.vlans?.[0]?.id ?? "" });
+  }
+
+  async function deleteSwitchPort() {
+    if (!siteDetail || !editingPortId) return;
+    const confirmed = window.confirm(`Excluir a porta ${portForm.portaNum} deste switch?`);
+    if (!confirmed) return;
+    await api(`/api/switch-ports/${editingPortId}`, { method: "DELETE" });
+    cancelPortEdit();
     await loadSiteDetail(siteDetail.id);
   }
 
@@ -1052,6 +1085,9 @@ export function App() {
                         <option value="CORE">CORE</option>
                       </select>
                     </Field>
+                    <Field label="Quantidade de portas">
+                      <input type="number" min={1} max={48} value={equipmentForm.qtdPortas} onChange={(event) => setEquipmentForm({ ...equipmentForm, qtdPortas: Number(event.target.value) })} />
+                    </Field>
                     <Field label="Observação">
                       <input value={equipmentForm.observacao} onChange={(event) => setEquipmentForm({ ...equipmentForm, observacao: event.target.value })} />
                     </Field>
@@ -1080,8 +1116,8 @@ export function App() {
               <section className="section-stack">
                 <form className="panel resource-form" onSubmit={(event) => void createSwitchPort(event)}>
                   <div className="panel-title">
-                    <h3>Nova porta de switch</h3>
-                    <p>Registre descrição, status e VLAN para alimentar as abas SWITCH e PATCH-PANEL da planilha.</p>
+                    <h3>{editingPortId ? "Editar porta de switch" : "Nova porta de switch"}</h3>
+                    <p>Registre descrição, status e VLAN. Cada porta salva é replicada automaticamente no patch-panel do switch.</p>
                   </div>
                   <Field label="Switch">
                     <select required value={portForm.equipamentoId} onChange={(event) => setPortForm({ ...portForm, equipamentoId: event.target.value })}>
@@ -1108,7 +1144,11 @@ export function App() {
                       {siteDetail.vlans?.map((vlan) => <option key={vlan.id} value={vlan.id}>{vlan.vlanId} - {vlan.vlanNome}</option>)}
                     </select>
                   </Field>
-                  <button disabled={!canWrite}>Adicionar porta</button>
+                  <div className="form-actions">
+                    <button disabled={!canWrite}>{editingPortId ? "Salvar porta" : "Adicionar porta"}</button>
+                    {editingPortId && <button type="button" className="ghost" onClick={cancelPortEdit}>Cancelar</button>}
+                    {editingPortId && <button type="button" className="ghost danger" disabled={!canWrite} onClick={() => void deleteSwitchPort()}>Excluir porta</button>}
+                  </div>
                 </form>
                 <DataSection title="Portas por switch">
                   <div className="equipment-grid">
@@ -1116,11 +1156,17 @@ export function App() {
                       <section className="mini-panel" key={equipment.id}>
                         <div className="mini-head">
                           <strong>{equipment.hostname}</strong>
-                          <button className="link" disabled={!canWrite} onClick={() => void generatePortTemplate(equipment.id)}>Gerar 28 portas</button>
+                          <span>{equipment.qtdPortas ?? 28} portas</span>
+                          <button className="link" disabled={!canWrite} onClick={() => void generatePortTemplate(equipment)}>Gerar {equipment.qtdPortas ?? 28} portas</button>
                         </div>
                         <div className="compact-list">
                           {(equipment.portas ?? []).map((port) => (
-                            <span key={port.id}>{port.portaNum} - {port.descricao ?? "VAGO"} - {port.status} - {port.vlan?.vlanId ?? "-"}</span>
+                            <button className="port-line" key={port.id} onClick={() => editSwitchPort(port)}>
+                              <span>{port.portaNum}</span>
+                              <span>{port.descricao ?? "VAGO"}</span>
+                              <span>{port.status}</span>
+                              <span>VLAN {port.vlan?.vlanId ?? "-"}</span>
+                            </button>
                           ))}
                         </div>
                       </section>
