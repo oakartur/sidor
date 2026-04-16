@@ -7,11 +7,11 @@ const prisma = new PrismaClient();
 async function main() {
   await prisma.templateVlan.createMany({
     data: [
-      { dblabel: "PADRAO", vlanId: 1, vlanNome: "Gerencia", baseOcteto: 160, dhcpInicio: 10, dhcpFim: 50, gatewayTemplate: 1, tipoAcessoInternet: "RESTRITO", ativo: true },
-      { dblabel: "PADRAO", vlanId: 2, vlanNome: "Usuarios", baseOcteto: 161, dhcpInicio: 20, dhcpFim: 220, gatewayTemplate: 1, tipoAcessoInternet: "DIRETO", ativo: true },
-      { dblabel: "PADRAO", vlanId: 3, vlanNome: "PDV", baseOcteto: 162, dhcpInicio: 20, dhcpFim: 220, gatewayTemplate: 1, tipoAcessoInternet: "RESTRITO", ativo: true },
-      { dblabel: "PADRAO", vlanId: 4, vlanNome: "WiFi", baseOcteto: 163, dhcpInicio: 20, dhcpFim: 230, gatewayTemplate: 1, tipoAcessoInternet: "DIRETO", ativo: true },
-      { dblabel: "PADRAO", vlanId: 5, vlanNome: "CFTV", baseOcteto: 164, dhcpInicio: 20, dhcpFim: 200, gatewayTemplate: 1, tipoAcessoInternet: "BLOQUEADO", ativo: true }
+      { dblabel: "PADRAO", vlanId: 1, vlanNome: "Gerencia", baseOcteto: 0, dhcpInicio: 10, dhcpFim: 50, gatewayTemplate: 1, tipoAcessoInternet: "RESTRITO", ativo: true },
+      { dblabel: "PADRAO", vlanId: 2, vlanNome: "Usuarios", baseOcteto: 1, dhcpInicio: 20, dhcpFim: 220, gatewayTemplate: 1, tipoAcessoInternet: "DIRETO", ativo: true },
+      { dblabel: "PADRAO", vlanId: 3, vlanNome: "PDV", baseOcteto: 2, dhcpInicio: 20, dhcpFim: 220, gatewayTemplate: 1, tipoAcessoInternet: "RESTRITO", ativo: true },
+      { dblabel: "PADRAO", vlanId: 4, vlanNome: "WiFi", baseOcteto: 3, dhcpInicio: 20, dhcpFim: 230, gatewayTemplate: 1, tipoAcessoInternet: "DIRETO", ativo: true },
+      { dblabel: "PADRAO", vlanId: 5, vlanNome: "CFTV", baseOcteto: 4, dhcpInicio: 20, dhcpFim: 200, gatewayTemplate: 1, tipoAcessoInternet: "BLOQUEADO", ativo: true }
     ],
     skipDuplicates: true
   });

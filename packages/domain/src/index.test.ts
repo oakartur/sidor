@@ -47,13 +47,13 @@ describe("switch hostname generation", () => {
 });
 
 describe("VLAN generation", () => {
-  it("derives CIDR, gateway and DHCP from VLAN1 and template octet", () => {
-    const vlans = generateVlans("10.23.160.0/24", [
+  it("derives CIDR, gateway and DHCP by adding the template offset to VLAN1 third octet", () => {
+    const vlans = generateVlans("10.20.25.0/24", [
       {
         dblabel: "Padrao",
-        vlanId: 20,
+        vlanId: 2,
         vlanNome: "Usuarios",
-        baseOcteto: 161,
+        baseOcteto: 1,
         dhcpInicio: 20,
         dhcpFim: 220,
         tipoAcessoInternet: "DIRETO",
@@ -63,12 +63,30 @@ describe("VLAN generation", () => {
     ]);
 
     expect(vlans[0]).toMatchObject({
-      vlanId: 20,
-      redeCidr: "10.23.161.0/24",
-      gateway: "10.23.161.1",
-      dhcpInicio: "10.23.161.20",
-      dhcpFim: "10.23.161.220"
+      vlanId: 2,
+      redeCidr: "10.20.26.0/24",
+      gateway: "10.20.26.1",
+      dhcpInicio: "10.20.26.20",
+      dhcpFim: "10.20.26.220"
     });
+  });
+
+  it("blocks VLAN generation when the calculated third octet exceeds 255", () => {
+    expect(() =>
+      generateVlans("10.20.255.0/24", [
+        {
+          dblabel: "Padrao",
+          vlanId: 2,
+          vlanNome: "Usuarios",
+          baseOcteto: 1,
+          dhcpInicio: 20,
+          dhcpFim: 220,
+          tipoAcessoInternet: "DIRETO",
+          gatewayTemplate: 1,
+          ativo: true
+        }
+      ])
+    ).toThrow(/terceiro_octeto_calculado/);
   });
 });
 

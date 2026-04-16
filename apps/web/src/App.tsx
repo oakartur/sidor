@@ -146,7 +146,7 @@ export function App() {
     dblabel: "PADRAO",
     vlanId: 1,
     vlanNome: "",
-    baseOcteto: 160,
+    baseOcteto: 0,
     dhcpInicio: 20,
     dhcpFim: 220,
     gatewayTemplate: 1,
@@ -266,7 +266,7 @@ export function App() {
       dblabel: "PADRAO",
       vlanId: 1,
       vlanNome: "",
-      baseOcteto: 160,
+      baseOcteto: 0,
       dhcpInicio: 20,
       dhcpFim: 220,
       gatewayTemplate: 1,
@@ -536,12 +536,12 @@ function TemplateVlanManager(props: {
       <form className="panel template-form" onSubmit={(event) => void props.onSubmit(event)}>
         <div className="panel-title">
           <h3>{props.editingTemplateId ? "Editar template" : "Novo item do template"}</h3>
-          <p>Esses dados controlam a geracao automatica das VLANs dos sites.</p>
+          <p>O incremento soma ao terceiro octeto da VLAN1 do site. Ex.: VLAN1 10.20.25.0/24 com incremento 1 gera 10.20.26.0/24.</p>
         </div>
         <input required placeholder="Label do template" value={props.form.dblabel} onChange={(event) => props.onUpdateForm({ ...props.form, dblabel: event.target.value })} />
         <input required type="number" min={1} placeholder="VLAN ID" value={props.form.vlanId} onChange={(event) => props.onUpdateForm({ ...props.form, vlanId: Number(event.target.value) })} />
         <input required placeholder="Nome da VLAN" value={props.form.vlanNome} onChange={(event) => props.onUpdateForm({ ...props.form, vlanNome: event.target.value })} />
-        <input required type="number" min={0} max={255} placeholder="Terceiro octeto" value={props.form.baseOcteto} onChange={(event) => props.onUpdateForm({ ...props.form, baseOcteto: Number(event.target.value) })} />
+        <input required type="number" min={0} max={255} placeholder="Incremento 3o octeto" value={props.form.baseOcteto} onChange={(event) => props.onUpdateForm({ ...props.form, baseOcteto: Number(event.target.value) })} />
         <input required type="number" min={1} max={254} placeholder="DHCP inicio" value={props.form.dhcpInicio} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpInicio: Number(event.target.value) })} />
         <input required type="number" min={1} max={254} placeholder="DHCP fim" value={props.form.dhcpFim} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpFim: Number(event.target.value) })} />
         <input required type="number" min={1} max={254} placeholder="Gateway" value={props.form.gatewayTemplate} onChange={(event) => props.onUpdateForm({ ...props.form, gatewayTemplate: Number(event.target.value) })} />
@@ -562,7 +562,7 @@ function TemplateVlanManager(props: {
             <span>Template</span>
             <span>VLAN</span>
             <span>Nome</span>
-            <span>Octeto</span>
+            <span>Incremento</span>
             <span>DHCP</span>
             <span>Gateway</span>
             <span>Status</span>

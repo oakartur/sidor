@@ -145,11 +145,13 @@ export function generateVlans(vlan1Cidr: string, templates: VlanTemplate[]) {
       validateHostOffset(template.dhcpInicio, "dhcp_inicio");
       validateHostOffset(template.dhcpFim, "dhcp_fim");
       validateHostOffset(template.gatewayTemplate, "gateway_template");
-      validateOctet(template.baseOcteto, "base_octeto");
+      validateOctetOffset(template.baseOcteto, "base_octeto");
       if (template.dhcpInicio > template.dhcpFim) {
         throw new DomainError(`Faixa DHCP invalida no template VLAN ${template.vlanId}`);
       }
-      const prefix = `${base.first}.${base.second}.${template.baseOcteto}`;
+      const thirdOctet = base.third + template.baseOcteto;
+      validateOctet(thirdOctet, "terceiro_octeto_calculado");
+      const prefix = `${base.first}.${base.second}.${thirdOctet}`;
       return {
         vlanId: template.vlanId,
         vlanNome: template.vlanNome,
@@ -214,6 +216,12 @@ export function generateRackSwitches(params: {
 function validateOctet(value: number, field: string) {
   if (!Number.isInteger(value) || value < 0 || value > 255) {
     throw new DomainError(`${field} deve estar entre 0 e 255`);
+  }
+}
+
+function validateOctetOffset(value: number, field: string) {
+  if (!Number.isInteger(value) || value < 0 || value > 255) {
+    throw new DomainError(`${field} deve ser um incremento entre 0 e 255`);
   }
 }
 
