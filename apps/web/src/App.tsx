@@ -3,6 +3,9 @@ import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 type Role = "ADMIN" | "OPERADOR" | "LEITURA";
 type DhcpScope = "DHCP" | "IP_FIXO" | "DHCP_RELAY";
 
+const REGIONAIS = ["DF", "MS", "MT", "SP", "SC", "RS"] as const;
+const BANDEIRAS = ["Fort", "Comper", "Bate Forte", "Trudys", "Vuon", "Perlog"] as const;
+
 interface User {
   id: string;
   nome: string;
@@ -871,10 +874,16 @@ export function App() {
               <p>O código é gerado automaticamente como Regional-Bandeira-Loja. Informe a VLAN 1 base no formato 10.23.160.0/24.</p>
             </div>
             <Field label="Regional">
-              <input required value={siteForm.regional} onChange={(event) => setSiteForm({ ...siteForm, regional: event.target.value })} placeholder="Ex.: CO" />
+              <select required value={siteForm.regional} onChange={(event) => setSiteForm({ ...siteForm, regional: event.target.value })}>
+                <option value="">Selecione a regional</option>
+                {REGIONAIS.map((regional) => <option key={regional} value={regional}>{regional}</option>)}
+              </select>
             </Field>
             <Field label="Bandeira">
-              <input required value={siteForm.bandeira} onChange={(event) => setSiteForm({ ...siteForm, bandeira: event.target.value })} placeholder="Ex.: Atacadão" />
+              <select required value={siteForm.bandeira} onChange={(event) => setSiteForm({ ...siteForm, bandeira: event.target.value })}>
+                <option value="">Selecione a bandeira</option>
+                {BANDEIRAS.map((bandeira) => <option key={bandeira} value={bandeira}>{bandeira}</option>)}
+              </select>
             </Field>
             <Field label="Loja">
               <input required value={siteForm.loja} onChange={(event) => setSiteForm({ ...siteForm, loja: event.target.value })} placeholder="Ex.: 123" />

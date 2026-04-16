@@ -23,6 +23,8 @@ const app = express();
 const jwtSecret = process.env.JWT_SECRET ?? "dev-secret-change-me";
 const port = Number(process.env.API_PORT ?? 3000);
 const host = process.env.API_HOST ?? "0.0.0.0";
+const REGIONAIS = ["DF", "MS", "MT", "SP", "SC", "RS"] as const;
+const BANDEIRAS = ["Fort", "Comper", "Bate Forte", "Trudys", "Vuon", "Perlog"] as const;
 
 declare global {
   namespace Express {
@@ -78,8 +80,8 @@ app.get("/api/dashboard", asyncHandler(async (_req, res) => {
 }));
 
 const siteSchema = z.object({
-  regional: z.string().min(1),
-  bandeira: z.string().min(1),
+  regional: z.enum(REGIONAIS),
+  bandeira: z.enum(BANDEIRAS),
   loja: z.string().min(1),
   labelSite: z.string().optional(),
   vlan1Cidr: z.string().min(1),
