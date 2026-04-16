@@ -1,0 +1,27 @@
+{
+  "name": "sidor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Sistema web de documentacao de rede corporativa.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @sidor/domain && npm run build --workspace @sidor/api && npm run build --workspace @sidor/web",
+    "dev:api": "npm run dev --workspace @sidor/api",
+    "dev:web": "npm run dev --workspace @sidor/web",
+    "test": "npm run test --workspace @sidor/domain && npm run test --workspace @sidor/api",
+    "prisma:generate": "npm run prisma:generate --workspace @sidor/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace @sidor/api",
+    "seed": "npm run seed --workspace @sidor/api"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

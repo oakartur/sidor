@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    network_mode: host
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sidor}
+      POSTGRES_USER: ${POSTGRES_USER:-sidor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sidor_dev_password}
+      PGPORT: ${POSTGRES_PORT:-15483}
+    command: ["postgres", "-p", "${POSTGRES_PORT:-15483}"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${POSTGRES_PORT:-15483} -U ${POSTGRES_USER:-sidor} -d ${POSTGRES_DB:-sidor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  api:
+    network_mode: host
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://sidor:sidor_dev_password@127.0.0.1:15483/sidor?schema=public}
+      JWT_SECRET: ${JWT_SECRET:-change-me-before-production}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrador}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@sidor.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-troque-esta-senha}
+      API_PORT: ${API_PORT:-1184}
+      API_HOST: 127.0.0.1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "cd apps/api && npx prisma migrate deploy && npm run seed && node dist/server.js"
+
+  web:
+    network_mode: host
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:

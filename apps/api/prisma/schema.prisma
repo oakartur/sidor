@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERADOR
+  LEITURA
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  nome         String
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  role         UserRole   @default(LEITURA)
+  ativo        Boolean    @default(true)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  auditorias   Auditoria[]
+
+  @@map("users")
+}
+
+model Site {
+  id              String          @id @default(uuid()) @db.Uuid
+  codigoSite      String          @unique @map("codigo_site")
+  regional        String
+  bandeira        String
+  loja            String
+  labelSite       String          @map("label_site")
+  vlan1Cidr       String          @map("vlan1_cidr")
+  ipSwitchInicial Int             @default(241) @map("ip_switch_inicial")
+  endereco        String?
+  observacao      String?
+  ativo           Boolean         @default(true)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  vlans           Vlan[]
+  racks           SiteRack[]
+  equipamentos    Equipamento[]
+  linksInternet   LinkInternet[]
+
+  @@map("sites")
+}
+
+model Vlan {
+  id                 String               @id @default(uuid()) @db.Uuid
+  siteId             String               @map("site_id") @db.Uuid
+  vlanId             Int                  @map("vlan_id")
+  vlanNome           String               @map("vlan_nome")
+  redeCidr           String               @map("rede_cidr")
+  dhcpInicio         String               @map("dhcp_inicio")
+  dhcpFim            String               @map("dhcp_fim")
+  gateway            String
+  tipoAcessoInternet String               @map("tipo_acesso_internet")
+  ativo              Boolean              @default(true)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  site               Site                 @relation(fields: [siteId], references: [id])
+  acessosInternet    VlanAcessoInternet[]
+  reservas           VlanIpReservado[]
+
+  @@unique([siteId, vlanId])
+  @@unique([siteId, redeCidr])
+  @@map("vlans")
+}
+
+model SiteRack {
+  id           String        @id @default(uuid()) @db.Uuid
+  siteId       String        @map("site_id") @db.Uuid
+  rackNum      Int           @map("rack_num")
+  localRack    String        @map("local_rack")
+  qtdSwitches  Int           @map("qtd_switches")
+  ativo        Boolean       @default(true)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  site         Site          @relation(fields: [siteId], references: [id])
+  equipamentos Equipamento[]
+
+  @@unique([siteId, rackNum])
+  @@map("site_racks")
+}
+
+model Equipamento {
+  id              String   @id @default(uuid()) @db.Uuid
+  siteId          String   @map("site_id") @db.Uuid
+  rackId          String   @map("rack_id") @db.Uuid
+  tipoEquipamento String   @default("SWITCH") @map("tipo_equipamento")
+  hostname        String
+  ipGerenciamento String   @map("ip_gerenciamento")
+  localRack       String   @map("local_rack")
+  rackNum         Int      @map("rack_num")
+  ordemNoRack     Int      @map("ordem_no_rack")
+  ordemGlobal     Int      @map("ordem_global")
+  papelSwitch     String   @map("papel_switch")
+  observacao      String?
+  editadoManual   Boolean  @default(false) @map("editado_manual")
+  ativo           Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  site            Site     @relation(fields: [siteId], references: [id])
+  rack            SiteRack @relation(fields: [rackId], references: [id])
+
+  @@unique([siteId, hostname])
+  @@unique([siteId, ipGerenciamento])
+  @@map("equipamentos")
+}
+
+model Operadora {
+  id            String         @id @default(uuid()) @db.Uuid
+  nome          String         @unique
+  contato       String?
+  telefone      String?
+  observacao    String?
+  ativo         Boolean        @default(true)
+  linksInternet LinkInternet[]
+
+  @@map("operadoras")
+}
+
+model LinkInternet {
+  id                    String               @id @default(uuid()) @db.Uuid
+  siteId                String               @map("site_id") @db.Uuid
+  operadoraId           String?              @map("operadora_id") @db.Uuid
+  nomeLink              String               @map("nome_link")
+  tipo                  String
+  ipWan                 String?              @map("ip_wan")
+  gatewayWan            String?              @map("gateway_wan")
+  mascaraOuCidr         String?              @map("mascara_ou_cidr")
+  dns1                  String?
+  dns2                  String?
+  ativo                 Boolean              @default(true)
+  observacao            String?
+  site                  Site                 @relation(fields: [siteId], references: [id])
+  operadora             Operadora?           @relation(fields: [operadoraId], references: [id])
+  acessosVlan           VlanAcessoInternet[]
+
+  @@map("links_internet")
+}
+
+model VlanAcessoInternet {
+  id             String       @id @default(uuid()) @db.Uuid
+  vlanId         String       @map("vlan_id") @db.Uuid
+  linkInternetId String       @map("link_internet_id") @db.Uuid
+  modoAcesso     String       @map("modo_acesso")
+  observacao     String?
+  vlan           Vlan         @relation(fields: [vlanId], references: [id])
+  linkInternet   LinkInternet @relation(fields: [linkInternetId], references: [id])
+
+  @@unique([vlanId, linkInternetId])
+  @@map("vlan_acesso_internet")
+}
+
+model IpReservadoPadrao {
+  id                 String            @id @default(uuid()) @db.Uuid
+  nomeReferencia     String            @map("nome_referencia")
+  hostOffset         Int               @map("host_offset")
+  descricao          String?
+  tipoEquipamento    String?           @map("tipo_equipamento")
+  ativo              Boolean           @default(true)
+  reservas           VlanIpReservado[]
+
+  @@map("ip_reservado_padrao")
+}
+
+model VlanIpReservado {
+  id                   String             @id @default(uuid()) @db.Uuid
+  vlanId               String             @map("vlan_id") @db.Uuid
+  ipReservadoPadraoId  String?            @map("ip_reservado_padrao_id") @db.Uuid
+  ipReal               String             @map("ip_real")
+  hostnameEsperado     String?            @map("hostname_esperado")
+  observacao           String?
+  vlan                 Vlan               @relation(fields: [vlanId], references: [id])
+  ipReservadoPadrao    IpReservadoPadrao? @relation(fields: [ipReservadoPadraoId], references: [id])
+
+  @@unique([vlanId, ipReal])
+  @@map("vlan_ip_reservado")
+}
+
+model TemplateVlan {
+  id                 String  @id @default(uuid()) @db.Uuid
+  dblabel            String
+  vlanId             Int     @map("vlan_id")
+  vlanNome           String  @map("vlan_nome")
+  baseOcteto         Int     @map("base_octeto")
+  dhcpInicio         Int     @map("dhcp_inicio")
+  dhcpFim            Int     @map("dhcp_fim")
+  tipoAcessoInternet String  @map("tipo_acesso_internet")
+  gatewayTemplate    Int     @map("gateway_template")
+  ativo              Boolean @default(true)
+
+  @@unique([dblabel, vlanId])
+  @@map("template_vlans")
+}
+
+model TemplateSwitchSlot {
+  id            String  @id @default(uuid()) @db.Uuid
+  slotNum       Int     @unique @map("slot_num")
+  sufixoNormal  String  @map("sufixo_normal")
+  sufixoR1      String  @map("sufixo_r1")
+  papelSwitch   String  @map("papel_switch")
+  ativo         Boolean @default(true)
+
+  @@map("template_switch_slots")
+}
+
+model Auditoria {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  entidade    String
+  entidadeId  String   @map("entidade_id")
+  acao        String
+  antesJson   Json?    @map("antes_json")
+  depoisJson  Json?    @map("depois_json")
+  motivo      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  actor       User?    @relation(fields: [actorUserId], references: [id])
+
+  @@map("auditoria")
+}
