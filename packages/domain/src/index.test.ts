@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildSiteCode,
   generateRackSwitches,
   generateVlans,
   managementIpForOrder,
@@ -16,6 +17,12 @@ describe("switch management IP sequence", () => {
 
   it("blocks automatic generation after 20 switches", () => {
     expect(() => managementIpForOrder("10.23.160.0/24", 21)).toThrow(/limite de 20/);
+  });
+});
+
+describe("site code generation", () => {
+  it("uses Regional-Bandeira-Loja", () => {
+    expect(buildSiteCode("CO", "BOMPRECO", "123")).toBe("CO-BOMPRECO-123");
   });
 });
 

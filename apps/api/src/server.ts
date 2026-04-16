@@ -9,6 +9,7 @@ import { pinoHttp } from "pino-http";
 import { z } from "zod";
 import {
   DomainError,
+  buildSiteCode,
   buildSiteLabel,
   generateRackSwitches,
   generateVlans,
@@ -76,7 +77,6 @@ app.get("/api/dashboard", asyncHandler(async (_req, res) => {
 }));
 
 const siteSchema = z.object({
-  codigoSite: z.string().min(1),
   regional: z.string().min(1),
   bandeira: z.string().min(1),
   loja: z.string().min(1),
@@ -109,9 +109,11 @@ app.get("/api/sites", asyncHandler(async (req, res) => {
 app.post("/api/sites", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
   const input = siteSchema.parse(req.body);
   parseIpv4Cidr(input.vlan1Cidr);
+  const codigoSite = buildSiteCode(input.regional, input.bandeira, input.loja);
   const site = await prisma.site.create({
     data: {
       ...input,
+      codigoSite,
       labelSite: input.labelSite?.trim() || buildSiteLabel(input.regional, input.bandeira, input.loja)
     }
   });
@@ -138,15 +140,16 @@ app.put("/api/sites/:siteId", requireRole("ADMIN", "OPERADOR"), asyncHandler(asy
     parseIpv4Cidr(input.vlan1Cidr);
   }
   const before = await prisma.site.findUniqueOrThrow({ where: { id: req.params.siteId } });
+  const regional = input.regional ?? before.regional;
+  const bandeira = input.bandeira ?? before.bandeira;
+  const loja = input.loja ?? before.loja;
+  const shouldUpdateIdentity = input.regional !== undefined || input.bandeira !== undefined || input.loja !== undefined;
   const after = await prisma.site.update({
     where: { id: req.params.siteId },
     data: {
       ...input,
-      labelSite: input.labelSite ?? (
-        input.regional || input.bandeira || input.loja
-          ? buildSiteLabel(input.regional ?? before.regional, input.bandeira ?? before.bandeira, input.loja ?? before.loja)
-          : undefined
-      )
+      codigoSite: shouldUpdateIdentity ? buildSiteCode(regional, bandeira, loja) : undefined,
+      labelSite: input.labelSite ?? (shouldUpdateIdentity ? buildSiteLabel(regional, bandeira, loja) : undefined)
     }
   });
   await audit(req, "sites", after.id, "UPDATE", before, after, req.body.motivo);
@@ -353,21 +356,41 @@ app.get("/api/templates/vlans", asyncHandler(async (_req, res) => {
   res.json(await prisma.templateVlan.findMany({ orderBy: [{ dblabel: "asc" }, { vlanId: "asc" }] }));
 }));
 
+const templateVlanBaseSchema = z.object({
+  dblabel: z.string().min(1),
+  vlanId: z.number().int().positive(),
+  vlanNome: z.string().min(1),
+  baseOcteto: z.number().int().min(0).max(255),
+  dhcpInicio: z.number().int().min(1).max(254),
+  dhcpFim: z.number().int().min(1).max(254),
+  tipoAcessoInternet: z.string().min(1),
+  gatewayTemplate: z.number().int().min(1).max(254),
+  ativo: z.boolean().default(true)
+});
+
+const templateVlanSchema = templateVlanBaseSchema.refine((value) => value.dhcpInicio <= value.dhcpFim, {
+  message: "dhcp_inicio deve ser menor ou igual a dhcp_fim",
+  path: ["dhcpFim"]
+});
+
 app.post("/api/templates/vlans", requireRole("ADMIN"), asyncHandler(async (req, res) => {
-  const schema = z.object({
-    dblabel: z.string().min(1),
-    vlanId: z.number().int().positive(),
-    vlanNome: z.string().min(1),
-    baseOcteto: z.number().int().min(0).max(255),
-    dhcpInicio: z.number().int().min(1).max(254),
-    dhcpFim: z.number().int().min(1).max(254),
-    tipoAcessoInternet: z.string().min(1),
-    gatewayTemplate: z.number().int().min(1).max(254),
-    ativo: z.boolean().default(true)
-  });
-  const template = await prisma.templateVlan.create({ data: schema.parse(req.body) });
+  const template = await prisma.templateVlan.create({ data: templateVlanSchema.parse(req.body) });
   await audit(req, "template_vlans", template.id, "CREATE", null, template);
   res.status(201).json(template);
+}));
+
+app.put("/api/templates/vlans/:templateId", requireRole("ADMIN"), asyncHandler(async (req, res) => {
+  const input = templateVlanBaseSchema.partial().refine((value) => {
+    if (value.dhcpInicio === undefined || value.dhcpFim === undefined) return true;
+    return value.dhcpInicio <= value.dhcpFim;
+  }, {
+    message: "dhcp_inicio deve ser menor ou igual a dhcp_fim",
+    path: ["dhcpFim"]
+  }).parse(req.body);
+  const before = await prisma.templateVlan.findUniqueOrThrow({ where: { id: req.params.templateId } });
+  const after = await prisma.templateVlan.update({ where: { id: req.params.templateId }, data: input });
+  await audit(req, "template_vlans", after.id, "UPDATE", before, after);
+  res.json(after);
 }));
 
 app.get("/api/templates/switch-slots", asyncHandler(async (_req, res) => {

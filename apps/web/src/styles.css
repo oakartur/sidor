@@ -92,6 +92,23 @@ p {
   font-weight: 700;
 }
 
+.main-menu {
+  display: grid;
+  gap: 8px;
+}
+
+.main-menu button {
+  background: transparent;
+  border: 1px solid #405149;
+  color: #eef5f1;
+  text-align: left;
+}
+
+.main-menu button.active {
+  background: #eef5f1;
+  color: #17201c;
+}
+
 .site-list {
   display: grid;
   gap: 8px;
@@ -285,6 +302,50 @@ p {
   gap: 10px;
 }
 
+.template-form {
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+}
+
+.template-form .panel-title,
+.template-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.checkbox-field input {
+  width: auto;
+}
+
+.template-row {
+  min-width: 960px;
+  display: grid;
+  grid-template-columns: 1fr 0.6fr 1.2fr 0.7fr 1fr 0.7fr 0.7fr 0.7fr;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #edf1ef;
+}
+
+.template-row:last-child {
+  border-bottom: 0;
+}
+
+.template-row.head {
+  background: #eef3f0;
+  font-weight: 800;
+}
+
 .section-stack {
   display: grid;
   gap: 14px;
@@ -331,6 +392,10 @@ p {
   }
 
   .rack-form {
+    grid-template-columns: 1fr;
+  }
+
+  .template-form {
     grid-template-columns: 1fr;
   }
 

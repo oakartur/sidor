@@ -59,6 +59,8 @@ Troque essas variaveis antes de producao.
 
 O Compose usa `network_mode: host`, entao o acesso deixa de usar a rede Docker bridge `172.x` e passa pelo IP real da VM. O Nginx escuta na porta `1183` e roteia `/api` para a API local em `127.0.0.1:1184`. O PostgreSQL do SIDOR escuta em `127.0.0.1:15483` e persiste no volume `postgres_data`.
 
+Se a API falhar com `Prisma P1010`, o PostgreSQL aceitou conexao na porta, mas negou usuario/senha. Isso normalmente ocorre quando o volume `postgres_data` ja foi inicializado com outra senha: alterar `POSTGRES_PASSWORD` no `.env` nao troca a senha de um banco ja criado. Para ambiente sem dados, remova o volume com `docker compose down -v` e rode `./deploy.sh` novamente. Para preservar dados, altere a senha do usuario dentro do PostgreSQL e mantenha o `DATABASE_URL` igual ao `.env`.
+
 ## Estrutura
 
 - `packages/domain`: regras puras de CIDR, VLAN, hostname e IP de switches.

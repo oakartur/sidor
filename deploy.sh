@@ -52,7 +52,7 @@ docker compose up -d --remove-orphans
 
 echo "Aguardando Nginx/API responderem em http://127.0.0.1:${APP_PORT}/health ..."
 for attempt in $(seq 1 40); do
-  if curl -fsS "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then
+  if curl -fsS --connect-timeout 2 --max-time 5 "http://127.0.0.1:${APP_PORT}/health" >/dev/null 2>&1; then
     HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
     echo "Deploy concluido."
     echo "Acesso local:   http://127.0.0.1:${APP_PORT}"
@@ -65,5 +65,16 @@ for attempt in $(seq 1 40); do
 done
 
 echo "Deploy iniciado, mas o healthcheck nao respondeu a tempo." >&2
+echo "Status dos containers:" >&2
+docker compose ps >&2 || true
+echo "" >&2
+echo "Ultimos logs da API:" >&2
+docker compose logs --tail=80 api >&2 || true
+echo "" >&2
+echo "Ultimos logs do Nginx web:" >&2
+docker compose logs --tail=80 web >&2 || true
+echo "" >&2
+echo "Ultimos logs do PostgreSQL:" >&2
+docker compose logs --tail=80 postgres >&2 || true
 echo "Verifique os logs com: docker compose logs -f" >&2
 exit 1

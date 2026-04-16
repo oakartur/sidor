@@ -91,6 +91,21 @@ interface GeneratedVlan {
   conflict?: boolean;
 }
 
+interface VlanTemplate {
+  id: string;
+  dblabel: string;
+  vlanId: number;
+  vlanNome: string;
+  baseOcteto: number;
+  dhcpInicio: number;
+  dhcpFim: number;
+  tipoAcessoInternet: string;
+  gatewayTemplate: number;
+  ativo: boolean;
+}
+
+type VlanTemplateForm = Omit<VlanTemplate, "id">;
+
 interface GeneratedSwitch {
   hostname: string;
   ipGerenciamento: string;
@@ -111,13 +126,13 @@ export function App() {
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedSiteId, setSelectedSiteId] = useState("");
   const [siteDetail, setSiteDetail] = useState<Site | null>(null);
+  const [activeView, setActiveView] = useState<"operacao" | "templateVlans">("operacao");
   const [activeTab, setActiveTab] = useState("vlans");
   const [search, setSearch] = useState("");
   const [vlanPreview, setVlanPreview] = useState<GeneratedVlan[]>([]);
   const [switchPreview, setSwitchPreview] = useState<GeneratedSwitch[]>([]);
   const [selectedRackId, setSelectedRackId] = useState("");
   const [siteForm, setSiteForm] = useState({
-    codigoSite: "",
     regional: "",
     bandeira: "",
     loja: "",
@@ -125,8 +140,22 @@ export function App() {
     endereco: ""
   });
   const [rackForm, setRackForm] = useState({ rackNum: 1, localRack: "", qtdSwitches: 1 });
+  const [vlanTemplates, setVlanTemplates] = useState<VlanTemplate[]>([]);
+  const [editingTemplateId, setEditingTemplateId] = useState("");
+  const [templateForm, setTemplateForm] = useState<VlanTemplateForm>({
+    dblabel: "PADRAO",
+    vlanId: 1,
+    vlanNome: "",
+    baseOcteto: 160,
+    dhcpInicio: 20,
+    dhcpFim: 220,
+    gatewayTemplate: 1,
+    tipoAcessoInternet: "DIRETO",
+    ativo: true
+  });
 
   const canWrite = user?.role === "ADMIN" || user?.role === "OPERADOR";
+  const canAdmin = user?.role === "ADMIN";
   const selectedRack = useMemo(
     () => siteDetail?.racks?.find((rack) => rack.id === selectedRackId),
     [siteDetail?.racks, selectedRackId]
@@ -148,6 +177,11 @@ export function App() {
     if (!selectedSiteId || !token) return;
     void loadSiteDetail(selectedSiteId);
   }, [selectedSiteId, token]);
+
+  useEffect(() => {
+    if (!token || activeView !== "templateVlans") return;
+    void loadVlanTemplates();
+  }, [activeView, token]);
 
   async function bootstrap() {
     try {
@@ -191,9 +225,54 @@ export function App() {
   async function createSite(event: FormEvent) {
     event.preventDefault();
     const created = await api<Site>("/api/sites", { method: "POST", body: JSON.stringify(siteForm) });
-    setSiteForm({ codigoSite: "", regional: "", bandeira: "", loja: "", vlan1Cidr: "", endereco: "" });
+    setSiteForm({ regional: "", bandeira: "", loja: "", vlan1Cidr: "", endereco: "" });
     await loadSites();
     setSelectedSiteId(created.id);
+  }
+
+  async function loadVlanTemplates() {
+    setVlanTemplates(await api<VlanTemplate[]>("/api/templates/vlans"));
+  }
+
+  async function saveVlanTemplate(event: FormEvent) {
+    event.preventDefault();
+    const path = editingTemplateId ? `/api/templates/vlans/${editingTemplateId}` : "/api/templates/vlans";
+    await api<VlanTemplate>(path, {
+      method: editingTemplateId ? "PUT" : "POST",
+      body: JSON.stringify(templateForm)
+    });
+    resetTemplateForm();
+    await loadVlanTemplates();
+  }
+
+  function editVlanTemplate(template: VlanTemplate) {
+    setEditingTemplateId(template.id);
+    setTemplateForm({
+      dblabel: template.dblabel,
+      vlanId: template.vlanId,
+      vlanNome: template.vlanNome,
+      baseOcteto: template.baseOcteto,
+      dhcpInicio: template.dhcpInicio,
+      dhcpFim: template.dhcpFim,
+      gatewayTemplate: template.gatewayTemplate,
+      tipoAcessoInternet: template.tipoAcessoInternet,
+      ativo: template.ativo
+    });
+  }
+
+  function resetTemplateForm() {
+    setEditingTemplateId("");
+    setTemplateForm({
+      dblabel: "PADRAO",
+      vlanId: 1,
+      vlanNome: "",
+      baseOcteto: 160,
+      dhcpInicio: 20,
+      dhcpFim: 220,
+      gatewayTemplate: 1,
+      tipoAcessoInternet: "DIRETO",
+      ativo: true
+    });
   }
 
   async function createRack(event: FormEvent) {
@@ -260,6 +339,14 @@ export function App() {
           <h1>Documentacao de rede</h1>
           <p className="muted">Operacao de sites, VLANs, racks, switches e links.</p>
         </div>
+        <nav className="main-menu">
+          <button className={activeView === "operacao" ? "active" : ""} onClick={() => setActiveView("operacao")}>
+            Operacao
+          </button>
+          <button className={activeView === "templateVlans" ? "active" : ""} onClick={() => setActiveView("templateVlans")}>
+            Template VLANs
+          </button>
+        </nav>
         <label className="search">
           Buscar
           <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Site, IP ou codigo" />
@@ -284,8 +371,8 @@ export function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Painel</p>
-            <h2>{siteDetail?.labelSite ?? "Selecione ou cadastre um site"}</h2>
+            <p className="eyebrow">{activeView === "operacao" ? "Painel" : "Administracao"}</p>
+            <h2>{activeView === "operacao" ? siteDetail?.labelSite ?? "Selecione ou cadastre um site" : "Template das VLANs"}</h2>
           </div>
           <div className="role">{user.role}</div>
         </header>
@@ -301,13 +388,25 @@ export function App() {
 
         {error && <div className="alert">{error}</div>}
 
+        {activeView === "templateVlans" ? (
+          <TemplateVlanManager
+            canAdmin={canAdmin}
+            editingTemplateId={editingTemplateId}
+            form={templateForm}
+            onCancel={resetTemplateForm}
+            onEdit={editVlanTemplate}
+            onSubmit={saveVlanTemplate}
+            onUpdateForm={setTemplateForm}
+            templates={vlanTemplates}
+          />
+        ) : (
+          <>
         <section className="split">
           <form className="panel" onSubmit={(event) => void createSite(event)}>
             <div className="panel-title">
               <h3>Novo site</h3>
-              <p>Informe a VLAN1 base no formato 10.23.160.0/24.</p>
+              <p>O codigo sera gerado como Regional-Bandeira-Loja. Informe a VLAN1 base no formato 10.23.160.0/24.</p>
             </div>
-            <input required placeholder="Codigo do site" value={siteForm.codigoSite} onChange={(event) => setSiteForm({ ...siteForm, codigoSite: event.target.value })} />
             <input required placeholder="Regional" value={siteForm.regional} onChange={(event) => setSiteForm({ ...siteForm, regional: event.target.value })} />
             <input required placeholder="Bandeira" value={siteForm.bandeira} onChange={(event) => setSiteForm({ ...siteForm, bandeira: event.target.value })} />
             <input required placeholder="Loja" value={siteForm.loja} onChange={(event) => setSiteForm({ ...siteForm, loja: event.target.value })} />
@@ -415,8 +514,75 @@ export function App() {
             )}
           </section>
         )}
+          </>
+        )}
       </section>
     </main>
+  );
+}
+
+function TemplateVlanManager(props: {
+  canAdmin: boolean;
+  editingTemplateId: string;
+  form: VlanTemplateForm;
+  onCancel: () => void;
+  onEdit: (template: VlanTemplate) => void;
+  onSubmit: (event: FormEvent) => Promise<void>;
+  onUpdateForm: (form: VlanTemplateForm) => void;
+  templates: VlanTemplate[];
+}) {
+  return (
+    <section className="section-stack">
+      <form className="panel template-form" onSubmit={(event) => void props.onSubmit(event)}>
+        <div className="panel-title">
+          <h3>{props.editingTemplateId ? "Editar template" : "Novo item do template"}</h3>
+          <p>Esses dados controlam a geracao automatica das VLANs dos sites.</p>
+        </div>
+        <input required placeholder="Label do template" value={props.form.dblabel} onChange={(event) => props.onUpdateForm({ ...props.form, dblabel: event.target.value })} />
+        <input required type="number" min={1} placeholder="VLAN ID" value={props.form.vlanId} onChange={(event) => props.onUpdateForm({ ...props.form, vlanId: Number(event.target.value) })} />
+        <input required placeholder="Nome da VLAN" value={props.form.vlanNome} onChange={(event) => props.onUpdateForm({ ...props.form, vlanNome: event.target.value })} />
+        <input required type="number" min={0} max={255} placeholder="Terceiro octeto" value={props.form.baseOcteto} onChange={(event) => props.onUpdateForm({ ...props.form, baseOcteto: Number(event.target.value) })} />
+        <input required type="number" min={1} max={254} placeholder="DHCP inicio" value={props.form.dhcpInicio} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpInicio: Number(event.target.value) })} />
+        <input required type="number" min={1} max={254} placeholder="DHCP fim" value={props.form.dhcpFim} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpFim: Number(event.target.value) })} />
+        <input required type="number" min={1} max={254} placeholder="Gateway" value={props.form.gatewayTemplate} onChange={(event) => props.onUpdateForm({ ...props.form, gatewayTemplate: Number(event.target.value) })} />
+        <input required placeholder="Tipo acesso internet" value={props.form.tipoAcessoInternet} onChange={(event) => props.onUpdateForm({ ...props.form, tipoAcessoInternet: event.target.value })} />
+        <label className="checkbox-field">
+          <input type="checkbox" checked={props.form.ativo} onChange={(event) => props.onUpdateForm({ ...props.form, ativo: event.target.checked })} />
+          Ativo
+        </label>
+        <div className="form-actions">
+          <button disabled={!props.canAdmin}>{props.editingTemplateId ? "Salvar template" : "Criar template"}</button>
+          {props.editingTemplateId && <button className="ghost" type="button" onClick={props.onCancel}>Cancelar</button>}
+        </div>
+      </form>
+
+      <DataSection title="Itens cadastrados">
+        <div className="table template-table">
+          <div className="template-row head">
+            <span>Template</span>
+            <span>VLAN</span>
+            <span>Nome</span>
+            <span>Octeto</span>
+            <span>DHCP</span>
+            <span>Gateway</span>
+            <span>Status</span>
+            <span>Acao</span>
+          </div>
+          {props.templates.map((template) => (
+            <div className="template-row" key={template.id}>
+              <span>{template.dblabel}</span>
+              <span>{template.vlanId}</span>
+              <span>{template.vlanNome}</span>
+              <span>{template.baseOcteto}</span>
+              <span>{template.dhcpInicio}-{template.dhcpFim}</span>
+              <span>{template.gatewayTemplate}</span>
+              <span>{template.ativo ? "Ativo" : "Inativo"}</span>
+              <button className="link" disabled={!props.canAdmin} onClick={() => props.onEdit(template)}>Editar</button>
+            </div>
+          ))}
+        </div>
+      </DataSection>
+    </section>
   );
 }
 

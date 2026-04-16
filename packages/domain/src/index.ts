@@ -93,6 +93,13 @@ export function buildSiteLabel(regional: string, bandeira: string, loja: string)
     .join(" - ");
 }
 
+export function buildSiteCode(regional: string, bandeira: string, loja: string) {
+  return [regional, bandeira, loja]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("-");
+}
+
 export function managementIpForOrder(vlan1Cidr: string, ordemGlobal: number) {
   if (!Number.isInteger(ordemGlobal) || ordemGlobal < 1) {
     throw new DomainError("ordem_global deve iniciar em 1");
