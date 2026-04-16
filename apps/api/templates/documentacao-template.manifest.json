@@ -1,0 +1,51 @@
+{
+  "version": "FORT-154-2026-04-16",
+  "templateFile": "documentacao-template.xlsx",
+  "sheets": {
+    "PATCH-PANEL": {
+      "purpose": "Mapa visual de patch-panels por rack, derivado das portas dos switches quando houver vínculo.",
+      "preserve": ["layout", "mergedCells", "conditionalFormatting", "columnWidths", "rowHeights", "formulas"]
+    },
+    "SWITCH": {
+      "purpose": "Mapa visual de portas de switches por rack/equipamento.",
+      "portBlocks": [
+        { "titleCell": "A3", "portColumn": "B", "descriptionColumn": "C", "statusColumn": "D", "vlanColumn": "E" },
+        { "titleCell": "G3", "portColumn": "H", "descriptionColumn": "I", "statusColumn": "J", "vlanColumn": "K" },
+        { "titleCell": "M3", "portColumn": "N", "descriptionColumn": "O", "statusColumn": "P", "vlanColumn": "Q" },
+        { "titleCell": "S3", "portColumn": "T", "descriptionColumn": "U", "statusColumn": "V", "vlanColumn": "W" },
+        { "titleCell": "Y3", "portColumn": "Z", "descriptionColumn": "AA", "statusColumn": "AB", "vlanColumn": "AC" },
+        { "titleCell": "AE3", "portColumn": "AF", "descriptionColumn": "AG", "statusColumn": "AH", "vlanColumn": "AI" },
+        { "titleCell": "AK3", "portColumn": "AL", "descriptionColumn": "AM", "statusColumn": "AN", "vlanColumn": "AO" },
+        { "titleCell": "AQ3", "portColumn": "AR", "descriptionColumn": "AS", "statusColumn": "AT", "vlanColumn": "AU" },
+        { "titleCell": "AW3", "portColumn": "AX", "descriptionColumn": "AY", "statusColumn": "AZ", "vlanColumn": "BA" },
+        { "titleCell": "BC3", "portColumn": "BD", "descriptionColumn": "BE", "statusColumn": "BF", "vlanColumn": "BG" },
+        { "titleCell": "BI3", "portColumn": "BJ", "descriptionColumn": "BK", "statusColumn": "BL", "vlanColumn": "BM" }
+      ]
+    },
+    "Redes": {
+      "purpose": "VLANs, DHCP, matriz de acesso, switches, operadoras/interfaces e IPs reservados.",
+      "ranges": {
+        "vlans": "A3:F21",
+        "dhcp": "A25:E44",
+        "internetAccess": "A47:E68",
+        "switches": "H47:J58",
+        "links": "H60:L63",
+        "reservedIps": "N3:P87"
+      }
+    },
+    "Telefonia": {
+      "purpose": "Cabeçalho PBX e lista de ramais por local/liberação.",
+      "ranges": {
+        "header": "A1:F4",
+        "extensions": "A3:C22"
+      }
+    },
+    "Base": {
+      "purpose": "Base de portas/IPs de gerenciamento e descrições padrão usadas pelas fórmulas do template.",
+      "ranges": {
+        "switchManagementIps": "A2:D22",
+        "defaultPortLabels": "F1:F15"
+      }
+    }
+  }
+}

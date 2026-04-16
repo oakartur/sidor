@@ -45,6 +45,9 @@ model Site {
   racks           SiteRack[]
   equipamentos    Equipamento[]
   linksInternet   LinkInternet[]
+  interfaces      SiteInterface[]
+  patchPanels     PatchPanel[]
+  telefonia       TelefoniaSite?
 
   @@map("sites")
 }
@@ -66,6 +69,8 @@ model Vlan {
   site               Site                 @relation(fields: [siteId], references: [id])
   acessosInternet    VlanAcessoInternet[]
   reservas           VlanIpReservado[]
+  switchPorts        SwitchPort[]
+  interfaces         SiteInterface[]
 
   @@unique([siteId, vlanId])
   @@unique([siteId, redeCidr])
@@ -78,11 +83,14 @@ model SiteRack {
   rackNum      Int           @map("rack_num")
   localRack    String        @map("local_rack")
   qtdSwitches  Int           @map("qtd_switches")
+  alturaU      Int?          @map("altura_u")
+  labelExport  String?       @map("label_export")
   ativo        Boolean       @default(true)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   site         Site          @relation(fields: [siteId], references: [id])
   equipamentos Equipamento[]
+  patchPanels  PatchPanel[]
 
   @@unique([siteId, rackNum])
   @@map("site_racks")
@@ -107,6 +115,7 @@ model Equipamento {
   updatedAt       DateTime @updatedAt @map("updated_at")
   site            Site     @relation(fields: [siteId], references: [id])
   rack            SiteRack @relation(fields: [rackId], references: [id])
+  portas          SwitchPort[]
 
   @@unique([siteId, hostname])
   @@unique([siteId, ipGerenciamento])
@@ -134,6 +143,12 @@ model LinkInternet {
   ipWan                 String?              @map("ip_wan")
   gatewayWan            String?              @map("gateway_wan")
   mascaraOuCidr         String?              @map("mascara_ou_cidr")
+  redeOperadora         String?              @map("rede_operadora")
+  ipMikrotik            String?              @map("ip_mikrotik")
+  ipOperadora           String?              @map("ip_operadora")
+  velocidade            String?
+  interfaceNome         String?              @map("interface_nome")
+  ordemExportacao       Int?                 @map("ordem_exportacao")
   dns1                  String?
   dns2                  String?
   ativo                 Boolean              @default(true)
@@ -141,6 +156,7 @@ model LinkInternet {
   site                  Site                 @relation(fields: [siteId], references: [id])
   operadora             Operadora?           @relation(fields: [operadoraId], references: [id])
   acessosVlan           VlanAcessoInternet[]
+  interfaces            SiteInterface[]
 
   @@map("links_internet")
 }
@@ -174,7 +190,10 @@ model VlanIpReservado {
   id                   String             @id @default(uuid()) @db.Uuid
   vlanId               String             @map("vlan_id") @db.Uuid
   ipReservadoPadraoId  String?            @map("ip_reservado_padrao_id") @db.Uuid
-  ipReal               String             @map("ip_real")
+  tipoReserva          String             @default("IP_UNICO") @map("tipo_reserva")
+  ipReal               String?            @map("ip_real")
+  ipFim                String?            @map("ip_fim")
+  mac                  String?
   hostnameEsperado     String?            @map("hostname_esperado")
   observacao           String?
   vlan                 Vlan               @relation(fields: [vlanId], references: [id])
@@ -182,6 +201,115 @@ model VlanIpReservado {
 
   @@unique([vlanId, ipReal])
   @@map("vlan_ip_reservado")
+}
+
+model SwitchPort {
+  id             String       @id @default(uuid()) @db.Uuid
+  equipamentoId  String       @map("equipamento_id") @db.Uuid
+  vlanId         String?      @map("vlan_id") @db.Uuid
+  portaNum       Int          @map("porta_num")
+  descricao      String?
+  status         String       @default("VAGO")
+  observacao     String?
+  ordem          Int?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  equipamento    Equipamento  @relation(fields: [equipamentoId], references: [id], onDelete: Cascade)
+  vlan           Vlan?        @relation(fields: [vlanId], references: [id])
+  patchPorts     PatchPanelPort[]
+
+  @@unique([equipamentoId, portaNum])
+  @@map("switch_ports")
+}
+
+model PatchPanel {
+  id          String           @id @default(uuid()) @db.Uuid
+  siteId      String           @map("site_id") @db.Uuid
+  rackId      String?          @map("rack_id") @db.Uuid
+  nome        String
+  rackNum     Int?             @map("rack_num")
+  descricao   String?
+  ativo       Boolean          @default(true)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  site        Site             @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  rack        SiteRack?        @relation(fields: [rackId], references: [id])
+  portas      PatchPanelPort[]
+
+  @@unique([siteId, nome])
+  @@map("patch_panels")
+}
+
+model PatchPanelPort {
+  id           String      @id @default(uuid()) @db.Uuid
+  patchPanelId String      @map("patch_panel_id") @db.Uuid
+  switchPortId String?     @map("switch_port_id") @db.Uuid
+  portaNum     Int         @map("porta_num")
+  descricao    String?
+  observacao   String?
+  ativo        Boolean     @default(true)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  patchPanel   PatchPanel  @relation(fields: [patchPanelId], references: [id], onDelete: Cascade)
+  switchPort   SwitchPort? @relation(fields: [switchPortId], references: [id])
+
+  @@unique([patchPanelId, portaNum])
+  @@map("patch_panel_ports")
+}
+
+model SiteInterface {
+  id             String        @id @default(uuid()) @db.Uuid
+  siteId         String        @map("site_id") @db.Uuid
+  vlanId         String?       @map("vlan_id") @db.Uuid
+  linkInternetId String?       @map("link_internet_id") @db.Uuid
+  nome           String
+  descricao      String?
+  ipCidr         String?       @map("ip_cidr")
+  gateway        String?
+  tipo           String        @default("MIKROTIK")
+  ordem          Int?
+  ativo          Boolean       @default(true)
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  site           Site          @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  vlan           Vlan?         @relation(fields: [vlanId], references: [id])
+  linkInternet   LinkInternet? @relation(fields: [linkInternetId], references: [id])
+
+  @@unique([siteId, nome])
+  @@map("site_interfaces")
+}
+
+model TelefoniaSite {
+  id           String            @id @default(uuid()) @db.Uuid
+  siteId       String            @unique @map("site_id") @db.Uuid
+  titulo       String?
+  modelo       String?
+  tipo         String?
+  ip           String?
+  senhaRamais  String?           @map("senha_ramais")
+  observacao   String?
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  site         Site              @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  ramais       TelefoniaRamal[]
+
+  @@map("telefonia_site")
+}
+
+model TelefoniaRamal {
+  id              String        @id @default(uuid()) @db.Uuid
+  telefoniaSiteId String        @map("telefonia_site_id") @db.Uuid
+  local           String
+  ramal           String
+  liberacao       String
+  observacao      String?
+  ativo           Boolean       @default(true)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  telefoniaSite   TelefoniaSite @relation(fields: [telefoniaSiteId], references: [id], onDelete: Cascade)
+
+  @@unique([telefoniaSiteId, ramal])
+  @@map("telefonia_ramais")
 }
 
 model TemplateVlan {

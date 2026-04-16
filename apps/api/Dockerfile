@@ -23,5 +23,6 @@ COPY --from=build /app/packages/domain/dist packages/domain/dist
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma apps/api/prisma
+COPY --from=build /app/apps/api/templates apps/api/templates
 EXPOSE 3000
 CMD ["node", "apps/api/dist/server.js"]

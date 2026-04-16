@@ -29,6 +29,9 @@ interface Site {
   racks?: Rack[];
   equipamentos?: Equipamento[];
   linksInternet?: LinkInternet[];
+  interfaces?: SiteInterface[];
+  patchPanels?: PatchPanel[];
+  telefonia?: TelefoniaSite | null;
 }
 
 interface Vlan {
@@ -42,6 +45,7 @@ interface Vlan {
   dhcpFim: string | null;
   tipoAcessoInternet: string;
   ativo: boolean;
+  reservas?: ReservaIp[];
 }
 
 interface Rack {
@@ -66,14 +70,89 @@ interface Equipamento {
   observacao?: string | null;
   editadoManual?: boolean;
   ativo: boolean;
+  portas?: SwitchPort[];
 }
 
 interface LinkInternet {
   id: string;
   nomeLink: string;
   tipo: string;
+  redeOperadora?: string | null;
+  ipMikrotik?: string | null;
+  ipOperadora?: string | null;
+  velocidade?: string | null;
+  interfaceNome?: string | null;
   ativo: boolean;
   operadora?: { nome: string };
+}
+
+interface SwitchPort {
+  id: string;
+  equipamentoId: string;
+  vlanId?: string | null;
+  portaNum: number;
+  descricao?: string | null;
+  status: string;
+  observacao?: string | null;
+  vlan?: Vlan | null;
+}
+
+interface PatchPanel {
+  id: string;
+  rackId?: string | null;
+  nome: string;
+  rackNum?: number | null;
+  descricao?: string | null;
+  ativo: boolean;
+  portas?: PatchPanelPort[];
+}
+
+interface PatchPanelPort {
+  id: string;
+  portaNum: number;
+  descricao?: string | null;
+  ativo: boolean;
+}
+
+interface SiteInterface {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  ipCidr?: string | null;
+  gateway?: string | null;
+  tipo: string;
+  ordem?: number | null;
+  ativo: boolean;
+}
+
+interface ReservaIp {
+  id: string;
+  vlanId: string;
+  tipoReserva: "IP_UNICO" | "FAIXA" | "DHCP";
+  ipReal?: string | null;
+  ipFim?: string | null;
+  mac?: string | null;
+  hostnameEsperado?: string | null;
+  observacao?: string | null;
+  vlan?: Vlan;
+}
+
+interface TelefoniaSite {
+  id: string;
+  titulo?: string | null;
+  modelo?: string | null;
+  tipo?: string | null;
+  ip?: string | null;
+  senhaRamais?: string | null;
+  ramais: TelefoniaRamal[];
+}
+
+interface TelefoniaRamal {
+  id: string;
+  local: string;
+  ramal: string;
+  liberacao: string;
+  ativo: boolean;
 }
 
 interface Dashboard {
@@ -171,6 +250,13 @@ export function App() {
     endereco: ""
   });
   const [rackForm, setRackForm] = useState({ rackNum: 1, localRack: "", qtdSwitches: 1 });
+  const [portForm, setPortForm] = useState({ equipamentoId: "", portaNum: 1, descricao: "", status: "UP", vlanId: "" });
+  const [patchPanelForm, setPatchPanelForm] = useState({ rackId: "", nome: "", rackNum: 1, descricao: "" });
+  const [reservaForm, setReservaForm] = useState({ vlanId: "", tipoReserva: "IP_UNICO", ipReal: "", ipFim: "", hostnameEsperado: "", mac: "" });
+  const [interfaceForm, setInterfaceForm] = useState({ nome: "", descricao: "", ipCidr: "", gateway: "", tipo: "MIKROTIK", ordem: 1 });
+  const [linkForm, setLinkForm] = useState({ nomeLink: "", tipo: "WAN", redeOperadora: "", ipMikrotik: "", ipOperadora: "", velocidade: "", interfaceNome: "" });
+  const [telefoniaForm, setTelefoniaForm] = useState({ titulo: "", modelo: "", tipo: "PBX IP", ip: "", senhaRamais: "" });
+  const [ramalForm, setRamalForm] = useState({ local: "", ramal: "", liberacao: "RAMAL/LOCAL" });
   const [vlanTemplates, setVlanTemplates] = useState<VlanTemplate[]>([]);
   const [editingTemplateId, setEditingTemplateId] = useState("");
   const [templateForm, setTemplateForm] = useState<VlanTemplateForm>({
@@ -245,7 +331,18 @@ export function App() {
   }
 
   async function loadSiteDetail(siteId: string) {
-    setSiteDetail(await api<Site>(`/api/sites/${siteId}`));
+    const detail = await api<Site>(`/api/sites/${siteId}`);
+    setSiteDetail(detail);
+    setPortForm((form) => ({ ...form, equipamentoId: form.equipamentoId || detail.equipamentos?.[0]?.id || "", vlanId: form.vlanId || detail.vlans?.[0]?.id || "" }));
+    setPatchPanelForm((form) => ({ ...form, rackId: form.rackId || detail.racks?.[0]?.id || "", rackNum: form.rackNum || detail.racks?.[0]?.rackNum || 1 }));
+    setReservaForm((form) => ({ ...form, vlanId: form.vlanId || detail.vlans?.[0]?.id || "" }));
+    setTelefoniaForm({
+      titulo: detail.telefonia?.titulo ?? "",
+      modelo: detail.telefonia?.modelo ?? "",
+      tipo: detail.telefonia?.tipo ?? "PBX IP",
+      ip: detail.telefonia?.ip ?? "",
+      senhaRamais: detail.telefonia?.senhaRamais ?? ""
+    });
     setVlanPreview([]);
     setSwitchPreview([]);
   }
@@ -501,6 +598,154 @@ export function App() {
     await loadSiteDetail(siteDetail.id);
   }
 
+  async function exportDocumentation() {
+    if (!siteDetail) return;
+    const response = await fetch(`${API_URL}/api/sites/${siteDetail.id}/export/documentacao-xlsx`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) throw new Error("Falha ao exportar documentação");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `DOCUMENTACAO-SIDOR-${siteDetail.codigoSite}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importDocumentationFile(file: File) {
+    if (!siteDetail) return;
+    setError("");
+    const fileBase64 = arrayBufferToBase64(await file.arrayBuffer());
+    const preview = await api<{ vlans: number; equipamentos: number; portas: number; reservas: number; ramais: number; links: number; conflicts: Array<{ entidade: string; count: number }> }>(
+      `/api/sites/${siteDetail.id}/import-xlsx/preview`,
+      { method: "POST", body: JSON.stringify({ fileBase64 }) }
+    );
+    const conflicts = preview.conflicts.filter((item) => item.count > 0);
+    const message = [
+      `Importar ${preview.vlans} VLANs, ${preview.equipamentos} equipamentos, ${preview.portas} portas, ${preview.reservas} IPs reservados, ${preview.ramais} ramais e ${preview.links} links?`,
+      conflicts.length ? `Conflitos existentes: ${conflicts.map((item) => `${item.entidade}: ${item.count}`).join(", ")}.` : ""
+    ].filter(Boolean).join("\n");
+    if (!window.confirm(message)) return;
+    await api(`/api/sites/${siteDetail.id}/import-xlsx/confirm`, {
+      method: "POST",
+      body: JSON.stringify({ fileBase64, allowMerge: false })
+    });
+    await loadSites();
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function createSwitchPort(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    await api("/api/switch-ports", {
+      method: "POST",
+      body: JSON.stringify({
+        equipamentoId: portForm.equipamentoId,
+        vlanId: portForm.vlanId || null,
+        portaNum: portForm.portaNum,
+        descricao: portForm.descricao || null,
+        status: portForm.status,
+        ordem: portForm.portaNum
+      })
+    });
+    setPortForm({ ...portForm, portaNum: portForm.portaNum + 1, descricao: "" });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function generatePortTemplate(equipmentId: string) {
+    if (!siteDetail) return;
+    await api(`/api/equipamentos/${equipmentId}/ports/template`, { method: "POST", body: JSON.stringify({ quantidade: 28 }) });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function createPatchPanel(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    const rack = siteDetail.racks?.find((item) => item.id === patchPanelForm.rackId);
+    await api(`/api/sites/${siteDetail.id}/patch-panels`, {
+      method: "POST",
+      body: JSON.stringify({
+        rackId: patchPanelForm.rackId || null,
+        nome: patchPanelForm.nome,
+        rackNum: rack?.rackNum ?? patchPanelForm.rackNum,
+        descricao: patchPanelForm.descricao || null
+      })
+    });
+    setPatchPanelForm({ ...patchPanelForm, nome: "", descricao: "" });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function createReserva(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    await api(`/api/sites/${siteDetail.id}/ip-reservados`, {
+      method: "POST",
+      body: JSON.stringify({
+        vlanId: reservaForm.vlanId,
+        tipoReserva: reservaForm.tipoReserva,
+        ipReal: reservaForm.tipoReserva === "DHCP" ? null : reservaForm.ipReal,
+        ipFim: reservaForm.tipoReserva === "FAIXA" ? reservaForm.ipFim : null,
+        hostnameEsperado: reservaForm.hostnameEsperado || null,
+        mac: reservaForm.mac || null
+      })
+    });
+    setReservaForm({ ...reservaForm, ipReal: "", ipFim: "", hostnameEsperado: "", mac: "" });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function createInterface(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    await api(`/api/sites/${siteDetail.id}/interfaces`, {
+      method: "POST",
+      body: JSON.stringify({
+        nome: interfaceForm.nome,
+        descricao: interfaceForm.descricao || null,
+        ipCidr: interfaceForm.ipCidr || null,
+        gateway: interfaceForm.gateway || null,
+        tipo: interfaceForm.tipo,
+        ordem: interfaceForm.ordem
+      })
+    });
+    setInterfaceForm({ nome: "", descricao: "", ipCidr: "", gateway: "", tipo: "MIKROTIK", ordem: interfaceForm.ordem + 1 });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function createInternetLink(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    await api(`/api/sites/${siteDetail.id}/links-internet`, {
+      method: "POST",
+      body: JSON.stringify({
+        nomeLink: linkForm.nomeLink,
+        tipo: linkForm.tipo,
+        redeOperadora: linkForm.redeOperadora || null,
+        ipMikrotik: linkForm.ipMikrotik || null,
+        ipOperadora: linkForm.ipOperadora || null,
+        velocidade: linkForm.velocidade || null,
+        interfaceNome: linkForm.interfaceNome || null
+      })
+    });
+    setLinkForm({ nomeLink: "", tipo: "WAN", redeOperadora: "", ipMikrotik: "", ipOperadora: "", velocidade: "", interfaceNome: "" });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function saveTelefonia(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    await api(`/api/sites/${siteDetail.id}/telefonia`, { method: "PUT", body: JSON.stringify(telefoniaForm) });
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function createRamal(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail) return;
+    await api(`/api/sites/${siteDetail.id}/telefonia/ramais`, { method: "POST", body: JSON.stringify(ramalForm) });
+    setRamalForm({ local: "", ramal: "", liberacao: "RAMAL/LOCAL" });
+    await loadSiteDetail(siteDetail.id);
+  }
+
   async function api<T>(path: string, init?: RequestInit) {
     return publicApi<T>(path, {
       ...init,
@@ -637,11 +882,22 @@ export function App() {
                 <p className="eyebrow">{siteDetail.codigoSite}</p>
                 <h2>{siteDetail.labelSite}</h2>
                 <p className="muted">VLAN1 {siteDetail.vlan1Cidr}</p>
+                <div className="detail-actions">
+                  <button className="ghost" onClick={() => void exportDocumentation()}>Exportar documentação XLSX</button>
+                  <label className="file-action">
+                    Importar XLSX
+                    <input type="file" accept=".xlsx" onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.currentTarget.value = "";
+                      if (file) void importDocumentationFile(file);
+                    }} />
+                  </label>
+                </div>
               </div>
               <nav className="tabs">
-                {["vlans", "racks", "equipamentos", "internet"].map((tab) => (
+                {["vlans", "racks", "equipamentos", "portas", "patch", "ips", "telefonia", "internet"].map((tab) => (
                   <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>
-                    {tab === "vlans" ? "VLANs" : tab === "racks" ? "Racks" : tab === "equipamentos" ? "Equipamentos" : "Internet"}
+                    {tabLabel(tab)}
                   </button>
                 ))}
               </nav>
@@ -820,20 +1076,278 @@ export function App() {
               </section>
             )}
 
+            {activeTab === "portas" && (
+              <section className="section-stack">
+                <form className="panel resource-form" onSubmit={(event) => void createSwitchPort(event)}>
+                  <div className="panel-title">
+                    <h3>Nova porta de switch</h3>
+                    <p>Registre descrição, status e VLAN para alimentar as abas SWITCH e PATCH-PANEL da planilha.</p>
+                  </div>
+                  <Field label="Switch">
+                    <select required value={portForm.equipamentoId} onChange={(event) => setPortForm({ ...portForm, equipamentoId: event.target.value })}>
+                      {siteDetail.equipamentos?.map((item) => <option key={item.id} value={item.id}>{item.hostname}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Porta">
+                    <input type="number" min={1} value={portForm.portaNum} onChange={(event) => setPortForm({ ...portForm, portaNum: Number(event.target.value) })} />
+                  </Field>
+                  <Field label="Descrição">
+                    <input value={portForm.descricao} onChange={(event) => setPortForm({ ...portForm, descricao: event.target.value })} placeholder="Ex.: PDV - 01" />
+                  </Field>
+                  <Field label="Status">
+                    <select value={portForm.status} onChange={(event) => setPortForm({ ...portForm, status: event.target.value })}>
+                      <option value="UP">UP</option>
+                      <option value="DOWN">DOWN</option>
+                      <option value="PRV">PRV</option>
+                      <option value="VAGO">VAGO</option>
+                    </select>
+                  </Field>
+                  <Field label="VLAN">
+                    <select value={portForm.vlanId} onChange={(event) => setPortForm({ ...portForm, vlanId: event.target.value })}>
+                      <option value="">Sem VLAN</option>
+                      {siteDetail.vlans?.map((vlan) => <option key={vlan.id} value={vlan.id}>{vlan.vlanId} - {vlan.vlanNome}</option>)}
+                    </select>
+                  </Field>
+                  <button disabled={!canWrite}>Adicionar porta</button>
+                </form>
+                <DataSection title="Portas por switch">
+                  <div className="equipment-grid">
+                    {siteDetail.equipamentos?.map((equipment) => (
+                      <section className="mini-panel" key={equipment.id}>
+                        <div className="mini-head">
+                          <strong>{equipment.hostname}</strong>
+                          <button className="link" disabled={!canWrite} onClick={() => void generatePortTemplate(equipment.id)}>Gerar 28 portas</button>
+                        </div>
+                        <div className="compact-list">
+                          {(equipment.portas ?? []).map((port) => (
+                            <span key={port.id}>{port.portaNum} - {port.descricao ?? "VAGO"} - {port.status} - {port.vlan?.vlanId ?? "-"}</span>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </DataSection>
+              </section>
+            )}
+
+            {activeTab === "patch" && (
+              <section className="section-stack">
+                <form className="panel resource-form" onSubmit={(event) => void createPatchPanel(event)}>
+                  <div className="panel-title">
+                    <h3>Novo patch-panel</h3>
+                    <p>Cadastre painéis físicos por rack para a aba PATCH-PANEL da planilha.</p>
+                  </div>
+                  <Field label="Rack">
+                    <select value={patchPanelForm.rackId} onChange={(event) => {
+                      const rack = siteDetail.racks?.find((item) => item.id === event.target.value);
+                      setPatchPanelForm({ ...patchPanelForm, rackId: event.target.value, rackNum: rack?.rackNum ?? patchPanelForm.rackNum });
+                    }}>
+                      {siteDetail.racks?.map((rack) => <option key={rack.id} value={rack.id}>Rack {rack.rackNum}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Nome">
+                    <input required value={patchPanelForm.nome} onChange={(event) => setPatchPanelForm({ ...patchPanelForm, nome: event.target.value })} placeholder="PATCH-PANEL A" />
+                  </Field>
+                  <Field label="Descrição">
+                    <input value={patchPanelForm.descricao} onChange={(event) => setPatchPanelForm({ ...patchPanelForm, descricao: event.target.value })} />
+                  </Field>
+                  <button disabled={!canWrite}>Adicionar patch-panel</button>
+                </form>
+                <DataSection title="Patch-panels">
+                  <div className="table">
+                    <div className="row head"><span>Nome</span><span>Rack</span><span>Descrição</span><span>Status</span></div>
+                    {siteDetail.patchPanels?.map((panel) => (
+                      <div className="row" key={panel.id}>
+                        <span>{panel.nome}</span>
+                        <span>R{panel.rackNum ?? "-"}</span>
+                        <span>{panel.descricao ?? "-"}</span>
+                        <span>{panel.ativo ? "Ativo" : "Inativo"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DataSection>
+              </section>
+            )}
+
+            {activeTab === "ips" && (
+              <section className="section-stack">
+                <form className="panel resource-form" onSubmit={(event) => void createReserva(event)}>
+                  <div className="panel-title">
+                    <h3>Novo IP reservado</h3>
+                    <p>Use IP único, faixa ou DHCP para preencher a seção de IP padrão de equipamentos.</p>
+                  </div>
+                  <Field label="VLAN">
+                    <select required value={reservaForm.vlanId} onChange={(event) => setReservaForm({ ...reservaForm, vlanId: event.target.value })}>
+                      {siteDetail.vlans?.map((vlan) => <option key={vlan.id} value={vlan.id}>{vlan.vlanId} - {vlan.vlanNome}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Tipo">
+                    <select value={reservaForm.tipoReserva} onChange={(event) => setReservaForm({ ...reservaForm, tipoReserva: event.target.value })}>
+                      <option value="IP_UNICO">IP único</option>
+                      <option value="FAIXA">Faixa</option>
+                      <option value="DHCP">DHCP</option>
+                    </select>
+                  </Field>
+                  <Field label="IP inicial">
+                    <input disabled={reservaForm.tipoReserva === "DHCP"} value={reservaForm.ipReal} onChange={(event) => setReservaForm({ ...reservaForm, ipReal: event.target.value })} />
+                  </Field>
+                  <Field label="IP final">
+                    <input disabled={reservaForm.tipoReserva !== "FAIXA"} value={reservaForm.ipFim} onChange={(event) => setReservaForm({ ...reservaForm, ipFim: event.target.value })} />
+                  </Field>
+                  <Field label="Equipamento">
+                    <input value={reservaForm.hostnameEsperado} onChange={(event) => setReservaForm({ ...reservaForm, hostnameEsperado: event.target.value })} />
+                  </Field>
+                  <Field label="MAC">
+                    <input value={reservaForm.mac} onChange={(event) => setReservaForm({ ...reservaForm, mac: event.target.value })} />
+                  </Field>
+                  <button disabled={!canWrite}>Adicionar IP reservado</button>
+                </form>
+                <DataSection title="IPs reservados">
+                  <div className="table">
+                    <div className="row head"><span>Equipamento</span><span>VLAN</span><span>Tipo</span><span>IP</span><span>MAC</span></div>
+                    {siteDetail.vlans?.flatMap((vlan) => vlan.reservas ?? []).map((reserva) => (
+                      <div className="row" key={reserva.id}>
+                        <span>{reserva.hostnameEsperado ?? "-"}</span>
+                        <span>{siteDetail.vlans?.find((vlan) => vlan.id === reserva.vlanId)?.vlanId ?? "-"}</span>
+                        <span>{reserva.tipoReserva}</span>
+                        <span>{reserva.tipoReserva === "DHCP" ? "DHCP" : reserva.ipFim ? `${reserva.ipReal} - ${reserva.ipFim}` : reserva.ipReal}</span>
+                        <span>{reserva.mac ?? "-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DataSection>
+              </section>
+            )}
+
+            {activeTab === "telefonia" && (
+              <section className="section-stack">
+                <form className="panel resource-form" onSubmit={(event) => void saveTelefonia(event)}>
+                  <div className="panel-title">
+                    <h3>Telefonia do site</h3>
+                    <p>Dados do PBX e senha padrão de ramais usados na aba Telefonia.</p>
+                  </div>
+                  <Field label="Título">
+                    <input value={telefoniaForm.titulo} onChange={(event) => setTelefoniaForm({ ...telefoniaForm, titulo: event.target.value })} />
+                  </Field>
+                  <Field label="Modelo">
+                    <input value={telefoniaForm.modelo} onChange={(event) => setTelefoniaForm({ ...telefoniaForm, modelo: event.target.value })} />
+                  </Field>
+                  <Field label="Tipo">
+                    <input value={telefoniaForm.tipo} onChange={(event) => setTelefoniaForm({ ...telefoniaForm, tipo: event.target.value })} />
+                  </Field>
+                  <Field label="IP">
+                    <input value={telefoniaForm.ip} onChange={(event) => setTelefoniaForm({ ...telefoniaForm, ip: event.target.value })} />
+                  </Field>
+                  <Field label="Senha dos ramais">
+                    <input value={telefoniaForm.senhaRamais} onChange={(event) => setTelefoniaForm({ ...telefoniaForm, senhaRamais: event.target.value })} />
+                  </Field>
+                  <button disabled={!canWrite}>Salvar telefonia</button>
+                </form>
+                <form className="panel resource-form" onSubmit={(event) => void createRamal(event)}>
+                  <div className="panel-title">
+                    <h3>Novo ramal</h3>
+                  </div>
+                  <Field label="Local">
+                    <input required value={ramalForm.local} onChange={(event) => setRamalForm({ ...ramalForm, local: event.target.value })} />
+                  </Field>
+                  <Field label="Ramal">
+                    <input required value={ramalForm.ramal} onChange={(event) => setRamalForm({ ...ramalForm, ramal: event.target.value })} />
+                  </Field>
+                  <Field label="Liberação">
+                    <input required value={ramalForm.liberacao} onChange={(event) => setRamalForm({ ...ramalForm, liberacao: event.target.value })} />
+                  </Field>
+                  <button disabled={!canWrite}>Adicionar ramal</button>
+                </form>
+                <DataSection title="Ramais">
+                  <div className="table">
+                    <div className="row head"><span>Local</span><span>Ramal</span><span>Liberação</span><span>Status</span></div>
+                    {siteDetail.telefonia?.ramais.map((ramal) => (
+                      <div className="row" key={ramal.id}>
+                        <span>{ramal.local}</span>
+                        <span>{ramal.ramal}</span>
+                        <span>{ramal.liberacao}</span>
+                        <span>{ramal.ativo ? "Ativo" : "Inativo"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DataSection>
+              </section>
+            )}
+
             {activeTab === "internet" && (
-              <DataSection title="Links de internet">
-                <div className="table">
-                  <div className="row head"><span>Link</span><span>Tipo</span><span>Operadora</span><span>Status</span></div>
-                  {siteDetail.linksInternet?.map((link) => (
-                    <div className="row" key={link.id}>
-                      <span>{link.nomeLink}</span>
-                      <span>{link.tipo}</span>
-                      <span>{link.operadora?.nome ?? "-"}</span>
-                      <span>{link.ativo ? "Ativo" : "Inativo"}</span>
-                    </div>
-                  ))}
-                </div>
-              </DataSection>
+              <section className="section-stack">
+                <form className="panel resource-form" onSubmit={(event) => void createInternetLink(event)}>
+                  <div className="panel-title">
+                    <h3>Novo link de internet</h3>
+                    <p>Registre rede da operadora, IP Mikrotik, IP da operadora e velocidade.</p>
+                  </div>
+                  <Field label="Nome do link">
+                    <input required value={linkForm.nomeLink} onChange={(event) => setLinkForm({ ...linkForm, nomeLink: event.target.value })} />
+                  </Field>
+                  <Field label="Tipo">
+                    <input required value={linkForm.tipo} onChange={(event) => setLinkForm({ ...linkForm, tipo: event.target.value })} />
+                  </Field>
+                  <Field label="Rede operadora">
+                    <input value={linkForm.redeOperadora} onChange={(event) => setLinkForm({ ...linkForm, redeOperadora: event.target.value })} />
+                  </Field>
+                  <Field label="IP Mikrotik">
+                    <input value={linkForm.ipMikrotik} onChange={(event) => setLinkForm({ ...linkForm, ipMikrotik: event.target.value })} />
+                  </Field>
+                  <Field label="IP operadora">
+                    <input value={linkForm.ipOperadora} onChange={(event) => setLinkForm({ ...linkForm, ipOperadora: event.target.value })} />
+                  </Field>
+                  <Field label="Velocidade">
+                    <input value={linkForm.velocidade} onChange={(event) => setLinkForm({ ...linkForm, velocidade: event.target.value })} />
+                  </Field>
+                  <button disabled={!canWrite}>Adicionar link</button>
+                </form>
+                <form className="panel resource-form" onSubmit={(event) => void createInterface(event)}>
+                  <div className="panel-title">
+                    <h3>Nova interface Mikrotik</h3>
+                  </div>
+                  <Field label="Interface">
+                    <input required value={interfaceForm.nome} onChange={(event) => setInterfaceForm({ ...interfaceForm, nome: event.target.value })} placeholder="ETHER 1" />
+                  </Field>
+                  <Field label="Descrição">
+                    <input value={interfaceForm.descricao} onChange={(event) => setInterfaceForm({ ...interfaceForm, descricao: event.target.value })} />
+                  </Field>
+                  <Field label="IP/CIDR">
+                    <input value={interfaceForm.ipCidr} onChange={(event) => setInterfaceForm({ ...interfaceForm, ipCidr: event.target.value })} />
+                  </Field>
+                  <Field label="Gateway">
+                    <input value={interfaceForm.gateway} onChange={(event) => setInterfaceForm({ ...interfaceForm, gateway: event.target.value })} />
+                  </Field>
+                  <button disabled={!canWrite}>Adicionar interface</button>
+                </form>
+                <DataSection title="Links de internet">
+                  <div className="table">
+                    <div className="row head"><span>Link</span><span>Rede</span><span>Mikrotik</span><span>Operadora</span><span>Velocidade</span></div>
+                    {siteDetail.linksInternet?.map((link) => (
+                      <div className="row" key={link.id}>
+                        <span>{link.nomeLink}</span>
+                        <span>{link.redeOperadora ?? "-"}</span>
+                        <span>{link.ipMikrotik ?? "-"}</span>
+                        <span>{link.ipOperadora ?? link.operadora?.nome ?? "-"}</span>
+                        <span>{link.velocidade ?? "-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DataSection>
+                <DataSection title="Interfaces Mikrotik">
+                  <div className="table">
+                    <div className="row head"><span>Interface</span><span>Descrição</span><span>IP/CIDR</span><span>Gateway</span><span>Status</span></div>
+                    {siteDetail.interfaces?.map((item) => (
+                      <div className="row" key={item.id}>
+                        <span>{item.nome}</span>
+                        <span>{item.descricao ?? "-"}</span>
+                        <span>{item.ipCidr ?? "-"}</span>
+                        <span>{item.gateway ?? "-"}</span>
+                        <span>{item.ativo ? "Ativo" : "Inativo"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </DataSection>
+              </section>
             )}
           </section>
         )}
@@ -1095,6 +1609,15 @@ function optionalNumber(value: string) {
   return value === "" ? null : Number(value);
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
+}
+
 function formatDhcpScope(scope: DhcpScope) {
   if (scope === "IP_FIXO") return "IP fixo";
   if (scope === "DHCP_RELAY") return "DHCP relay";
@@ -1104,6 +1627,20 @@ function formatDhcpScope(scope: DhcpScope) {
 function formatDhcpRange(row: { escopoDhcp: DhcpScope; dhcpInicio: string | number | null; dhcpFim: string | number | null }) {
   if (row.escopoDhcp !== "DHCP") return "-";
   return `${row.dhcpInicio ?? "-"} / ${row.dhcpFim ?? "-"}`;
+}
+
+function tabLabel(tab: string) {
+  const labels: Record<string, string> = {
+    vlans: "VLANs",
+    racks: "Racks",
+    equipamentos: "Equipamentos",
+    portas: "Portas",
+    patch: "Patch-panel",
+    ips: "IPs reservados",
+    telefonia: "Telefonia",
+    internet: "Internet/Mikrotik"
+  };
+  return labels[tab] ?? tab;
 }
 
 function formatAuditAction(action: string) {
