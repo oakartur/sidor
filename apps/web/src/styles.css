@@ -44,6 +44,12 @@ select {
   color: #17201c;
 }
 
+input:disabled,
+select:disabled {
+  background: #eef3f0;
+  color: #7b8882;
+}
+
 h1,
 h2,
 h3,
@@ -214,6 +220,43 @@ p {
   margin-bottom: 0;
 }
 
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field-label {
+  color: #2f3d37;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.field-hint {
+  color: #6c7972;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.readonly-field {
+  border: 1px solid #d9e1dd;
+  border-radius: 6px;
+  background: #eef3f0;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.readonly-field span {
+  color: #6c7972;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.readonly-field strong {
+  color: #17201c;
+  overflow-wrap: anywhere;
+}
+
 .audit-list {
   display: grid;
   gap: 8px;
@@ -347,6 +390,7 @@ p {
   align-items: center;
   gap: 8px;
   min-height: 40px;
+  font-weight: 800;
 }
 
 .checkbox-field input {

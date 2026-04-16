@@ -161,6 +161,10 @@ export function App() {
 
   const canWrite = user?.role === "ADMIN" || user?.role === "OPERADOR";
   const canAdmin = user?.role === "ADMIN";
+  const derivedSiteCode = useMemo(
+    () => [siteForm.regional, siteForm.bandeira, siteForm.loja].map((part) => part.trim()).filter(Boolean).join("-"),
+    [siteForm.regional, siteForm.bandeira, siteForm.loja]
+  );
   const selectedRack = useMemo(
     () => siteDetail?.racks?.find((rack) => rack.id === selectedRackId),
     [siteDetail?.racks, selectedRackId]
@@ -343,20 +347,20 @@ export function App() {
       <aside className="sidebar">
         <div>
           <p className="eyebrow">SIDOR</p>
-          <h1>Documentacao de rede</h1>
-          <p className="muted">Operacao de sites, VLANs, racks, switches e links.</p>
+          <h1>Documentação de rede</h1>
+          <p className="muted">Operação de sites, VLANs, racks, switches e links.</p>
         </div>
         <nav className="main-menu">
           <button className={activeView === "operacao" ? "active" : ""} onClick={() => setActiveView("operacao")}>
-            Operacao
+            Operação
           </button>
           <button className={activeView === "templateVlans" ? "active" : ""} onClick={() => setActiveView("templateVlans")}>
-            Template VLANs
+            Templates de VLANs
           </button>
         </nav>
         <label className="search">
           Buscar
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Site, IP ou codigo" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Site, IP ou código" />
         </label>
         <div className="site-list">
           {sites.map((site) => (
@@ -378,8 +382,8 @@ export function App() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">{activeView === "operacao" ? "Painel" : "Administracao"}</p>
-            <h2>{activeView === "operacao" ? siteDetail?.labelSite ?? "Selecione ou cadastre um site" : "Template das VLANs"}</h2>
+            <p className="eyebrow">{activeView === "operacao" ? "Painel" : "Administração"}</p>
+            <h2>{activeView === "operacao" ? siteDetail?.labelSite ?? "Selecione ou cadastre um site" : "Templates de VLANs"}</h2>
           </div>
           <div className="role">{user.role}</div>
         </header>
@@ -412,26 +416,40 @@ export function App() {
           <form className="panel" onSubmit={(event) => void createSite(event)}>
             <div className="panel-title">
               <h3>Novo site</h3>
-              <p>O codigo sera gerado como Regional-Bandeira-Loja. Informe a VLAN1 base no formato 10.23.160.0/24.</p>
+              <p>O código é gerado automaticamente como Regional-Bandeira-Loja. Informe a VLAN 1 base no formato 10.23.160.0/24.</p>
             </div>
-            <input required placeholder="Regional" value={siteForm.regional} onChange={(event) => setSiteForm({ ...siteForm, regional: event.target.value })} />
-            <input required placeholder="Bandeira" value={siteForm.bandeira} onChange={(event) => setSiteForm({ ...siteForm, bandeira: event.target.value })} />
-            <input required placeholder="Loja" value={siteForm.loja} onChange={(event) => setSiteForm({ ...siteForm, loja: event.target.value })} />
-            <input required placeholder="VLAN1 CIDR" value={siteForm.vlan1Cidr} onChange={(event) => setSiteForm({ ...siteForm, vlan1Cidr: event.target.value })} />
-            <input placeholder="Endereco" value={siteForm.endereco} onChange={(event) => setSiteForm({ ...siteForm, endereco: event.target.value })} />
+            <Field label="Regional">
+              <input required value={siteForm.regional} onChange={(event) => setSiteForm({ ...siteForm, regional: event.target.value })} placeholder="Ex.: CO" />
+            </Field>
+            <Field label="Bandeira">
+              <input required value={siteForm.bandeira} onChange={(event) => setSiteForm({ ...siteForm, bandeira: event.target.value })} placeholder="Ex.: Atacadão" />
+            </Field>
+            <Field label="Loja">
+              <input required value={siteForm.loja} onChange={(event) => setSiteForm({ ...siteForm, loja: event.target.value })} placeholder="Ex.: 123" />
+            </Field>
+            <Field label="VLAN 1 base" hint="Use CIDR /24 com host .0.">
+              <input required value={siteForm.vlan1Cidr} onChange={(event) => setSiteForm({ ...siteForm, vlan1Cidr: event.target.value })} placeholder="10.20.25.0/24" />
+            </Field>
+            <Field label="Endereço">
+              <input value={siteForm.endereco} onChange={(event) => setSiteForm({ ...siteForm, endereco: event.target.value })} placeholder="Endereço físico do site" />
+            </Field>
+            <div className="readonly-field">
+              <span>Código gerado</span>
+              <strong>{derivedSiteCode || "Preencha regional, bandeira e loja"}</strong>
+            </div>
             <button disabled={!canWrite}>Cadastrar site</button>
           </form>
 
           <section className="panel">
             <div className="panel-title">
-              <h3>Ultimas alteracoes</h3>
-              <p>Eventos auditados de criacao, edicao e geracao.</p>
+              <h3>Últimas alterações</h3>
+              <p>Eventos auditados de criação, edição e geração.</p>
             </div>
             <div className="audit-list">
               {dashboard?.ultimasAlteracoes.map((item) => (
                 <div key={item.id} className="audit-row">
-                  <strong>{item.acao}</strong>
-                  <span>{item.entidade}</span>
+                  <strong>{formatAuditAction(item.acao)}</strong>
+                  <span>{formatEntityName(item.entidade)}</span>
                 </div>
               ))}
             </div>
@@ -449,7 +467,7 @@ export function App() {
               <nav className="tabs">
                 {["vlans", "racks", "equipamentos", "internet"].map((tab) => (
                   <button key={tab} className={activeTab === tab ? "active" : ""} onClick={() => setActiveTab(tab)}>
-                    {tab}
+                    {tab === "vlans" ? "VLANs" : tab === "racks" ? "Racks" : tab === "equipamentos" ? "Equipamentos" : "Internet"}
                   </button>
                 ))}
               </nav>
@@ -458,9 +476,9 @@ export function App() {
             {activeTab === "vlans" && (
               <DataSection
                 title="VLANs"
-                actionLabel="Pre-visualizar VLANs"
+                actionLabel="Pré-visualizar VLANs"
                 onAction={previewVlans}
-                secondaryLabel={vlanPreview.length ? "Confirmar geracao" : undefined}
+                secondaryLabel={vlanPreview.length ? "Confirmar geração" : undefined}
                 onSecondary={generateVlansNow}
               >
                 <VlanTable rows={vlanPreview.length ? vlanPreview : siteDetail.vlans ?? []} />
@@ -470,26 +488,32 @@ export function App() {
             {activeTab === "racks" && (
               <section className="section-stack">
                 <form className="rack-form" onSubmit={(event) => void createRack(event)}>
-                  <input type="number" min={1} value={rackForm.rackNum} onChange={(event) => setRackForm({ ...rackForm, rackNum: Number(event.target.value) })} />
-                  <input required placeholder="Local do rack" value={rackForm.localRack} onChange={(event) => setRackForm({ ...rackForm, localRack: event.target.value })} />
-                  <input type="number" min={1} value={rackForm.qtdSwitches} onChange={(event) => setRackForm({ ...rackForm, qtdSwitches: Number(event.target.value) })} />
+                  <Field label="Número do rack">
+                    <input type="number" min={1} value={rackForm.rackNum} onChange={(event) => setRackForm({ ...rackForm, rackNum: Number(event.target.value) })} />
+                  </Field>
+                  <Field label="Local do rack">
+                    <input required value={rackForm.localRack} onChange={(event) => setRackForm({ ...rackForm, localRack: event.target.value })} placeholder="Ex.: Sala técnica" />
+                  </Field>
+                  <Field label="Quantidade de switches">
+                    <input type="number" min={1} value={rackForm.qtdSwitches} onChange={(event) => setRackForm({ ...rackForm, qtdSwitches: Number(event.target.value) })} />
+                  </Field>
                   <button disabled={!canWrite}>Adicionar rack</button>
                 </form>
                 <div className="table">
-                  <div className="row head"><span>Rack</span><span>Local</span><span>Switches</span><span>Acao</span></div>
+                  <div className="row head"><span>Rack</span><span>Local</span><span>Switches</span><span>Ação</span></div>
                   {siteDetail.racks?.map((rack) => (
                     <div className="row" key={rack.id}>
                       <span>Rack {rack.rackNum}</span>
                       <span>{rack.localRack}</span>
                       <span>{rack.qtdSwitches}</span>
-                      <button className="link" onClick={() => void previewSwitches(rack.id)}>Previa switches</button>
+                      <button className="link" onClick={() => void previewSwitches(rack.id)}>Prévia dos switches</button>
                     </div>
                   ))}
                 </div>
                 {selectedRack && (
                   <DataSection
                     title={`Switches propostos para rack ${selectedRack.rackNum}`}
-                    secondaryLabel={switchPreview.length ? "Confirmar geracao" : undefined}
+                    secondaryLabel={switchPreview.length ? "Confirmar geração" : undefined}
                     onSecondary={generateSwitchesNow}
                   >
                     <SwitchTable rows={switchPreview} />
@@ -543,21 +567,39 @@ function TemplateVlanManager(props: {
       <form className="panel template-form" onSubmit={(event) => void props.onSubmit(event)}>
         <div className="panel-title">
           <h3>{props.editingTemplateId ? "Editar template" : "Novo item do template"}</h3>
-          <p>O incremento soma ao terceiro octeto da VLAN1 do site. Ex.: VLAN1 10.20.25.0/24 com incremento 1 gera 10.20.26.0/24.</p>
+          <p>O incremento soma ao terceiro octeto da VLAN 1 do site. Ex.: VLAN 1 10.20.25.0/24 com incremento 1 gera 10.20.26.0/24.</p>
         </div>
-        <input required placeholder="Label do template" value={props.form.dblabel} onChange={(event) => props.onUpdateForm({ ...props.form, dblabel: event.target.value })} />
-        <input required type="number" min={1} placeholder="VLAN ID" value={props.form.vlanId} onChange={(event) => props.onUpdateForm({ ...props.form, vlanId: Number(event.target.value) })} />
-        <input required placeholder="Nome da VLAN" value={props.form.vlanNome} onChange={(event) => props.onUpdateForm({ ...props.form, vlanNome: event.target.value })} />
-        <input required type="number" min={0} max={255} placeholder="Incremento 3o octeto" value={props.form.baseOcteto} onChange={(event) => props.onUpdateForm({ ...props.form, baseOcteto: Number(event.target.value) })} />
-        <select value={props.form.escopoDhcp} onChange={(event) => props.onUpdateForm({ ...props.form, escopoDhcp: event.target.value as DhcpScope })}>
-          <option value="DHCP">DHCP</option>
-          <option value="IP_FIXO">IP fixo</option>
-          <option value="DHCP_RELAY">DHCP relay</option>
-        </select>
-        <input disabled={props.form.escopoDhcp !== "DHCP"} required={props.form.escopoDhcp === "DHCP"} type="number" min={1} max={254} placeholder="DHCP inicio" value={props.form.dhcpInicio ?? ""} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpInicio: optionalNumber(event.target.value) })} />
-        <input disabled={props.form.escopoDhcp !== "DHCP"} required={props.form.escopoDhcp === "DHCP"} type="number" min={1} max={254} placeholder="DHCP fim" value={props.form.dhcpFim ?? ""} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpFim: optionalNumber(event.target.value) })} />
-        <input required type="number" min={1} max={254} placeholder="Gateway" value={props.form.gatewayTemplate} onChange={(event) => props.onUpdateForm({ ...props.form, gatewayTemplate: Number(event.target.value) })} />
-        <input required placeholder="Tipo acesso internet" value={props.form.tipoAcessoInternet} onChange={(event) => props.onUpdateForm({ ...props.form, tipoAcessoInternet: event.target.value })} />
+        <Field label="Nome do template">
+          <input required value={props.form.dblabel} onChange={(event) => props.onUpdateForm({ ...props.form, dblabel: event.target.value })} placeholder="PADRAO" />
+        </Field>
+        <Field label="ID da VLAN">
+          <input required type="number" min={1} value={props.form.vlanId} onChange={(event) => props.onUpdateForm({ ...props.form, vlanId: Number(event.target.value) })} />
+        </Field>
+        <Field label="Nome da VLAN">
+          <input required value={props.form.vlanNome} onChange={(event) => props.onUpdateForm({ ...props.form, vlanNome: event.target.value })} placeholder="Ex.: Usuários" />
+        </Field>
+        <Field label="Incremento do 3º octeto" hint="0 mantém o terceiro octeto da VLAN 1; 1 soma um ao terceiro octeto.">
+          <input required type="number" min={0} max={255} value={props.form.baseOcteto} onChange={(event) => props.onUpdateForm({ ...props.form, baseOcteto: Number(event.target.value) })} />
+        </Field>
+        <Field label="Escopo de endereçamento">
+          <select value={props.form.escopoDhcp} onChange={(event) => props.onUpdateForm({ ...props.form, escopoDhcp: event.target.value as DhcpScope })}>
+            <option value="DHCP">DHCP</option>
+            <option value="IP_FIXO">IP fixo</option>
+            <option value="DHCP_RELAY">DHCP relay</option>
+          </select>
+        </Field>
+        <Field label="DHCP início" hint={props.form.escopoDhcp === "DHCP" ? "Último octeto inicial da faixa." : "Não se aplica a este escopo."}>
+          <input disabled={props.form.escopoDhcp !== "DHCP"} required={props.form.escopoDhcp === "DHCP"} type="number" min={1} max={254} value={props.form.dhcpInicio ?? ""} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpInicio: optionalNumber(event.target.value) })} />
+        </Field>
+        <Field label="DHCP fim" hint={props.form.escopoDhcp === "DHCP" ? "Último octeto final da faixa." : "Não se aplica a este escopo."}>
+          <input disabled={props.form.escopoDhcp !== "DHCP"} required={props.form.escopoDhcp === "DHCP"} type="number" min={1} max={254} value={props.form.dhcpFim ?? ""} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpFim: optionalNumber(event.target.value) })} />
+        </Field>
+        <Field label="Gateway" hint="Último octeto do gateway.">
+          <input required type="number" min={1} max={254} value={props.form.gatewayTemplate} onChange={(event) => props.onUpdateForm({ ...props.form, gatewayTemplate: Number(event.target.value) })} />
+        </Field>
+        <Field label="Acesso à internet">
+          <input required value={props.form.tipoAcessoInternet} onChange={(event) => props.onUpdateForm({ ...props.form, tipoAcessoInternet: event.target.value })} placeholder="DIRETO, RESTRITO ou BLOQUEADO" />
+        </Field>
         <label className="checkbox-field">
           <input type="checkbox" checked={props.form.ativo} onChange={(event) => props.onUpdateForm({ ...props.form, ativo: event.target.checked })} />
           Ativo
@@ -579,7 +621,7 @@ function TemplateVlanManager(props: {
             <span>DHCP</span>
             <span>Gateway</span>
             <span>Status</span>
-            <span>Acao</span>
+            <span>Ação</span>
           </div>
           {props.templates.map((template) => (
             <div className="template-row" key={template.id}>
@@ -622,8 +664,12 @@ function LoginView({ onLogin, error }: { onLogin: (email: string, password: stri
         <h1>Acesso operacional</h1>
         <p className="muted">Entre com a conta local criada no bootstrap.</p>
         {error && <div className="alert">{error}</div>}
-        <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
-        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha" />
+        <Field label="E-mail">
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@sidor.local" />
+        </Field>
+        <Field label="Senha">
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha" />
+        </Field>
         <button disabled={busy}>{busy ? "Entrando..." : "Entrar"}</button>
       </form>
     </main>
@@ -658,6 +704,16 @@ function DataSection(props: {
       </div>
       {props.children}
     </section>
+  );
+}
+
+function Field(props: { label: string; hint?: string; children: ReactNode }) {
+  return (
+    <label className="field">
+      <span className="field-label">{props.label}</span>
+      {props.children}
+      {props.hint && <span className="field-hint">{props.hint}</span>}
+    </label>
   );
 }
 
@@ -728,4 +784,32 @@ function formatDhcpScope(scope: DhcpScope) {
 function formatDhcpRange(row: { escopoDhcp: DhcpScope; dhcpInicio: string | number | null; dhcpFim: string | number | null }) {
   if (row.escopoDhcp !== "DHCP") return "-";
   return `${row.dhcpInicio ?? "-"} / ${row.dhcpFim ?? "-"}`;
+}
+
+function formatAuditAction(action: string) {
+  const labels: Record<string, string> = {
+    CREATE: "Criação",
+    CREATE_MANUAL: "Criação manual",
+    UPDATE: "Edição",
+    UPDATE_MANUAL: "Edição manual",
+    DEACTIVATE: "Desativação",
+    GENERATE_VLANS: "Geração de VLANs",
+    GENERATE_SWITCHES: "Geração de switches"
+  };
+  return labels[action] ?? action;
+}
+
+function formatEntityName(entity: string) {
+  const labels: Record<string, string> = {
+    sites: "Sites",
+    vlans: "VLANs",
+    site_racks: "Racks",
+    equipamentos: "Equipamentos",
+    template_vlans: "Templates de VLANs",
+    template_switch_slots: "Templates de switches",
+    links_internet: "Links de internet",
+    operadoras: "Operadoras",
+    vlan_acesso_internet: "Acesso à internet"
+  };
+  return labels[entity] ?? entity;
 }
