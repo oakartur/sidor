@@ -54,6 +54,7 @@ describe("VLAN generation", () => {
         vlanId: 2,
         vlanNome: "Usuarios",
         baseOcteto: 1,
+        escopoDhcp: "DHCP",
         dhcpInicio: 20,
         dhcpFim: 220,
         tipoAcessoInternet: "DIRETO",
@@ -71,6 +72,30 @@ describe("VLAN generation", () => {
     });
   });
 
+  it("generates fixed-IP VLANs without DHCP range", () => {
+    const vlans = generateVlans("10.20.25.0/24", [
+      {
+        dblabel: "Padrao",
+        vlanId: 30,
+        vlanNome: "Servidores",
+        baseOcteto: 5,
+        escopoDhcp: "IP_FIXO",
+        dhcpInicio: null,
+        dhcpFim: null,
+        tipoAcessoInternet: "RESTRITO",
+        gatewayTemplate: 1,
+        ativo: true
+      }
+    ]);
+
+    expect(vlans[0]).toMatchObject({
+      escopoDhcp: "IP_FIXO",
+      redeCidr: "10.20.30.0/24",
+      dhcpInicio: null,
+      dhcpFim: null
+    });
+  });
+
   it("blocks VLAN generation when the calculated third octet exceeds 255", () => {
     expect(() =>
       generateVlans("10.20.255.0/24", [
@@ -79,6 +104,7 @@ describe("VLAN generation", () => {
           vlanId: 2,
           vlanNome: "Usuarios",
           baseOcteto: 1,
+          escopoDhcp: "DHCP",
           dhcpInicio: 20,
           dhcpFim: 220,
           tipoAcessoInternet: "DIRETO",

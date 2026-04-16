@@ -167,15 +167,16 @@ const vlanManualSchema = z.object({
   vlanId: z.number().int().positive(),
   vlanNome: z.string().min(1),
   redeCidr: z.string().min(1),
-  dhcpInicio: z.string().min(1),
-  dhcpFim: z.string().min(1),
+  escopoDhcp: z.enum(["DHCP", "IP_FIXO", "DHCP_RELAY"]).default("DHCP"),
+  dhcpInicio: z.string().min(1).nullable().optional(),
+  dhcpFim: z.string().min(1).nullable().optional(),
   gateway: z.string().min(1),
   tipoAcessoInternet: z.string().min(1),
   ativo: z.boolean().default(true)
 });
 
 app.post("/api/sites/:siteId/vlans", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
-  const input = vlanManualSchema.parse(req.body);
+  const input = normalizeDhcpRange(vlanManualSchema.parse(req.body));
   const vlan = await prisma.vlan.create({ data: { ...input, siteId: req.params.siteId } });
   await audit(req, "vlans", vlan.id, "CREATE", null, vlan);
   res.status(201).json(vlan);
@@ -201,6 +202,7 @@ app.post("/api/sites/:siteId/vlans/generate", requireRole("ADMIN", "OPERADOR"), 
       vlanId: item.vlanId,
       vlanNome: item.vlanNome,
       redeCidr: item.redeCidr,
+      escopoDhcp: item.escopoDhcp,
       dhcpInicio: item.dhcpInicio,
       dhcpFim: item.dhcpFim,
       gateway: item.gateway,
@@ -213,8 +215,14 @@ app.post("/api/sites/:siteId/vlans/generate", requireRole("ADMIN", "OPERADOR"), 
 }));
 
 app.put("/api/vlans/:vlanId", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
-  const input = vlanManualSchema.partial().parse(req.body);
   const before = await prisma.vlan.findUniqueOrThrow({ where: { id: req.params.vlanId } });
+  const parsed = vlanManualSchema.partial().parse(req.body);
+  const dhcp = normalizeDhcpRange({
+    escopoDhcp: parsed.escopoDhcp ?? before.escopoDhcp,
+    dhcpInicio: parsed.dhcpInicio !== undefined ? parsed.dhcpInicio : before.dhcpInicio,
+    dhcpFim: parsed.dhcpFim !== undefined ? parsed.dhcpFim : before.dhcpFim
+  });
+  const input = { ...parsed, ...dhcp };
   const after = await prisma.vlan.update({ where: { id: req.params.vlanId }, data: input });
   await audit(req, "vlans", after.id, "UPDATE", before, after, req.body.motivo);
   res.json(after);
@@ -361,33 +369,29 @@ const templateVlanBaseSchema = z.object({
   vlanId: z.number().int().positive(),
   vlanNome: z.string().min(1),
   baseOcteto: z.number().int().min(0).max(255),
-  dhcpInicio: z.number().int().min(1).max(254),
-  dhcpFim: z.number().int().min(1).max(254),
+  escopoDhcp: z.enum(["DHCP", "IP_FIXO", "DHCP_RELAY"]).default("DHCP"),
+  dhcpInicio: z.number().int().min(1).max(254).nullable().optional(),
+  dhcpFim: z.number().int().min(1).max(254).nullable().optional(),
   tipoAcessoInternet: z.string().min(1),
   gatewayTemplate: z.number().int().min(1).max(254),
   ativo: z.boolean().default(true)
 });
 
-const templateVlanSchema = templateVlanBaseSchema.refine((value) => value.dhcpInicio <= value.dhcpFim, {
-  message: "dhcp_inicio deve ser menor ou igual a dhcp_fim",
-  path: ["dhcpFim"]
-});
-
 app.post("/api/templates/vlans", requireRole("ADMIN"), asyncHandler(async (req, res) => {
-  const template = await prisma.templateVlan.create({ data: templateVlanSchema.parse(req.body) });
+  const template = await prisma.templateVlan.create({ data: normalizeDhcpRange(templateVlanBaseSchema.parse(req.body)) });
   await audit(req, "template_vlans", template.id, "CREATE", null, template);
   res.status(201).json(template);
 }));
 
 app.put("/api/templates/vlans/:templateId", requireRole("ADMIN"), asyncHandler(async (req, res) => {
-  const input = templateVlanBaseSchema.partial().refine((value) => {
-    if (value.dhcpInicio === undefined || value.dhcpFim === undefined) return true;
-    return value.dhcpInicio <= value.dhcpFim;
-  }, {
-    message: "dhcp_inicio deve ser menor ou igual a dhcp_fim",
-    path: ["dhcpFim"]
-  }).parse(req.body);
   const before = await prisma.templateVlan.findUniqueOrThrow({ where: { id: req.params.templateId } });
+  const parsed = templateVlanBaseSchema.partial().parse(req.body);
+  const dhcp = normalizeDhcpRange({
+    escopoDhcp: parsed.escopoDhcp ?? before.escopoDhcp,
+    dhcpInicio: parsed.dhcpInicio !== undefined ? parsed.dhcpInicio : before.dhcpInicio,
+    dhcpFim: parsed.dhcpFim !== undefined ? parsed.dhcpFim : before.dhcpFim
+  });
+  const input = { ...parsed, ...dhcp };
   const after = await prisma.templateVlan.update({ where: { id: req.params.templateId }, data: input });
   await audit(req, "template_vlans", after.id, "UPDATE", before, after);
   res.json(after);
@@ -494,7 +498,19 @@ async function previewVlans(siteId: string, templateLabel: string) {
   ]);
   const existingVlanIds = new Set(existing.map((item) => item.vlanId));
   const existingCidrs = new Set(existing.map((item) => item.redeCidr));
-  return generateVlans(site.vlan1Cidr, templates).map((item) => ({
+  return generateVlans(site.vlan1Cidr, templates.map((template) => ({
+    id: template.id,
+    dblabel: template.dblabel,
+    vlanId: template.vlanId,
+    vlanNome: template.vlanNome,
+    baseOcteto: template.baseOcteto,
+    escopoDhcp: template.escopoDhcp === "IP_FIXO" || template.escopoDhcp === "DHCP_RELAY" ? template.escopoDhcp : "DHCP",
+    dhcpInicio: template.dhcpInicio,
+    dhcpFim: template.dhcpFim,
+    tipoAcessoInternet: template.tipoAcessoInternet,
+    gatewayTemplate: template.gatewayTemplate,
+    ativo: template.ativo
+  }))).map((item) => ({
     ...item,
     conflict: existingVlanIds.has(item.vlanId) || existingCidrs.has(item.redeCidr)
   }));
@@ -593,4 +609,17 @@ function publicUser(user: { id: string; nome: string; email: string; role: UserR
     role: user.role,
     ativo: user.ativo
   };
+}
+
+function normalizeDhcpRange<T extends { escopoDhcp: string; dhcpInicio?: unknown; dhcpFim?: unknown }>(input: T): T & { dhcpInicio: unknown | null; dhcpFim: unknown | null } {
+  if (input.escopoDhcp !== "DHCP") {
+    return { ...input, dhcpInicio: null, dhcpFim: null };
+  }
+  if (input.dhcpInicio === null || input.dhcpInicio === undefined || input.dhcpFim === null || input.dhcpFim === undefined) {
+    throw new DomainError("VLAN com escopo DHCP exige dhcp_inicio e dhcp_fim");
+  }
+  if (typeof input.dhcpInicio === "number" && typeof input.dhcpFim === "number" && input.dhcpInicio > input.dhcpFim) {
+    throw new DomainError("dhcp_inicio deve ser menor ou igual a dhcp_fim");
+  }
+  return { ...input, dhcpInicio: input.dhcpInicio, dhcpFim: input.dhcpFim };
 }

@@ -15,7 +15,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -33,7 +34,8 @@ button:disabled {
   cursor: not-allowed;
 }
 
-input {
+input,
+select {
   width: 100%;
   border: 1px solid #c8d1cc;
   border-radius: 6px;
@@ -289,6 +291,29 @@ p {
   color: #833b00;
 }
 
+.vlan-row {
+  min-width: 900px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr 0.9fr 1.2fr 1fr;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #edf1ef;
+}
+
+.vlan-row:last-child {
+  border-bottom: 0;
+}
+
+.vlan-row.head {
+  background: #eef3f0;
+  font-weight: 800;
+}
+
+.vlan-row.conflict {
+  background: #fff0e6;
+  color: #833b00;
+}
+
 .link {
   background: transparent;
   color: #116149;
@@ -329,9 +354,9 @@ p {
 }
 
 .template-row {
-  min-width: 960px;
+  min-width: 1060px;
   display: grid;
-  grid-template-columns: 1fr 0.6fr 1.2fr 0.7fr 1fr 0.7fr 0.7fr 0.7fr;
+  grid-template-columns: 1fr 0.6fr 1.2fr 0.7fr 0.9fr 1fr 0.7fr 0.7fr 0.7fr;
   gap: 12px;
   padding: 12px;
   border-bottom: 1px solid #edf1ef;

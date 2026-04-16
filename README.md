@@ -16,6 +16,7 @@ Essa escolha prioriza uma UI web produtiva, regras de dominio testaveis fora do 
 ## Regras Implementadas
 
 - VLANs sao geradas a partir da VLAN1 `/24` do site e de incrementos relativos em `template_vlans`. Ex.: VLAN1 `10.20.25.0/24` com incremento `1` gera `10.20.26.0/24`.
+- O escopo de enderecamento da VLAN pode ser `DHCP`, `IP_FIXO` ou `DHCP_RELAY`. Apenas VLANs com escopo `DHCP` possuem `dhcp_inicio` e `dhcp_fim`.
 - Switches sao gerados por rack usando `template_switch_slots`.
 - IPs automaticos de switches usam os tres primeiros octetos da VLAN1 e a sequencia fixa: `.241` a `.250`, depois `.230` a `.239`.
 - Acima de 20 switches por site, a geracao automatica e bloqueada.

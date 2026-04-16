@@ -1,5 +1,6 @@
 export type SwitchRole = "CORE" | "ACCESS";
 export type EquipmentType = "SWITCH";
+export type DhcpScope = "DHCP" | "IP_FIXO" | "DHCP_RELAY";
 
 export interface SiteInput {
   vlan1Cidr: string;
@@ -11,8 +12,9 @@ export interface VlanTemplate {
   vlanId: number;
   vlanNome: string;
   baseOcteto: number;
-  dhcpInicio: number;
-  dhcpFim: number;
+  escopoDhcp: DhcpScope;
+  dhcpInicio: number | null;
+  dhcpFim: number | null;
   tipoAcessoInternet: string;
   gatewayTemplate: number;
   ativo: boolean;
@@ -22,8 +24,9 @@ export interface GeneratedVlan {
   vlanId: number;
   vlanNome: string;
   redeCidr: string;
-  dhcpInicio: string;
-  dhcpFim: string;
+  escopoDhcp: DhcpScope;
+  dhcpInicio: string | null;
+  dhcpFim: string | null;
   gateway: string;
   tipoAcessoInternet: string;
 }
@@ -142,12 +145,20 @@ export function generateVlans(vlan1Cidr: string, templates: VlanTemplate[]) {
     .filter((template) => template.ativo)
     .sort((a, b) => a.vlanId - b.vlanId)
     .map<GeneratedVlan>((template) => {
-      validateHostOffset(template.dhcpInicio, "dhcp_inicio");
-      validateHostOffset(template.dhcpFim, "dhcp_fim");
       validateHostOffset(template.gatewayTemplate, "gateway_template");
       validateOctetOffset(template.baseOcteto, "base_octeto");
-      if (template.dhcpInicio > template.dhcpFim) {
-        throw new DomainError(`Faixa DHCP invalida no template VLAN ${template.vlanId}`);
+      if (!["DHCP", "IP_FIXO", "DHCP_RELAY"].includes(template.escopoDhcp)) {
+        throw new DomainError(`Escopo DHCP invalido no template VLAN ${template.vlanId}`);
+      }
+      if (template.escopoDhcp === "DHCP") {
+        if (template.dhcpInicio === null || template.dhcpFim === null) {
+          throw new DomainError(`Template VLAN ${template.vlanId} exige dhcp_inicio e dhcp_fim para escopo DHCP`);
+        }
+        validateHostOffset(template.dhcpInicio, "dhcp_inicio");
+        validateHostOffset(template.dhcpFim, "dhcp_fim");
+        if (template.dhcpInicio > template.dhcpFim) {
+          throw new DomainError(`Faixa DHCP invalida no template VLAN ${template.vlanId}`);
+        }
       }
       const thirdOctet = base.third + template.baseOcteto;
       validateOctet(thirdOctet, "terceiro_octeto_calculado");
@@ -156,8 +167,9 @@ export function generateVlans(vlan1Cidr: string, templates: VlanTemplate[]) {
         vlanId: template.vlanId,
         vlanNome: template.vlanNome,
         redeCidr: `${prefix}.0/24`,
-        dhcpInicio: `${prefix}.${template.dhcpInicio}`,
-        dhcpFim: `${prefix}.${template.dhcpFim}`,
+        escopoDhcp: template.escopoDhcp,
+        dhcpInicio: template.escopoDhcp === "DHCP" ? `${prefix}.${template.dhcpInicio}` : null,
+        dhcpFim: template.escopoDhcp === "DHCP" ? `${prefix}.${template.dhcpFim}` : null,
         gateway: `${prefix}.${template.gatewayTemplate}`,
         tipoAcessoInternet: template.tipoAcessoInternet
       };

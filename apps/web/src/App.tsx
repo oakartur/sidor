@@ -1,6 +1,7 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
 type Role = "ADMIN" | "OPERADOR" | "LEITURA";
+type DhcpScope = "DHCP" | "IP_FIXO" | "DHCP_RELAY";
 
 interface User {
   id: string;
@@ -36,8 +37,9 @@ interface Vlan {
   vlanNome: string;
   redeCidr: string;
   gateway: string;
-  dhcpInicio: string;
-  dhcpFim: string;
+  escopoDhcp: DhcpScope;
+  dhcpInicio: string | null;
+  dhcpFim: string | null;
   tipoAcessoInternet: string;
   ativo: boolean;
 }
@@ -84,8 +86,9 @@ interface GeneratedVlan {
   vlanId: number;
   vlanNome: string;
   redeCidr: string;
-  dhcpInicio: string;
-  dhcpFim: string;
+  escopoDhcp: DhcpScope;
+  dhcpInicio: string | null;
+  dhcpFim: string | null;
   gateway: string;
   tipoAcessoInternet: string;
   conflict?: boolean;
@@ -97,8 +100,9 @@ interface VlanTemplate {
   vlanId: number;
   vlanNome: string;
   baseOcteto: number;
-  dhcpInicio: number;
-  dhcpFim: number;
+  escopoDhcp: DhcpScope;
+  dhcpInicio: number | null;
+  dhcpFim: number | null;
   tipoAcessoInternet: string;
   gatewayTemplate: number;
   ativo: boolean;
@@ -147,6 +151,7 @@ export function App() {
     vlanId: 1,
     vlanNome: "",
     baseOcteto: 0,
+    escopoDhcp: "DHCP",
     dhcpInicio: 20,
     dhcpFim: 220,
     gatewayTemplate: 1,
@@ -252,6 +257,7 @@ export function App() {
       vlanId: template.vlanId,
       vlanNome: template.vlanNome,
       baseOcteto: template.baseOcteto,
+      escopoDhcp: template.escopoDhcp,
       dhcpInicio: template.dhcpInicio,
       dhcpFim: template.dhcpFim,
       gatewayTemplate: template.gatewayTemplate,
@@ -267,6 +273,7 @@ export function App() {
       vlanId: 1,
       vlanNome: "",
       baseOcteto: 0,
+      escopoDhcp: "DHCP",
       dhcpInicio: 20,
       dhcpFim: 220,
       gatewayTemplate: 1,
@@ -542,8 +549,13 @@ function TemplateVlanManager(props: {
         <input required type="number" min={1} placeholder="VLAN ID" value={props.form.vlanId} onChange={(event) => props.onUpdateForm({ ...props.form, vlanId: Number(event.target.value) })} />
         <input required placeholder="Nome da VLAN" value={props.form.vlanNome} onChange={(event) => props.onUpdateForm({ ...props.form, vlanNome: event.target.value })} />
         <input required type="number" min={0} max={255} placeholder="Incremento 3o octeto" value={props.form.baseOcteto} onChange={(event) => props.onUpdateForm({ ...props.form, baseOcteto: Number(event.target.value) })} />
-        <input required type="number" min={1} max={254} placeholder="DHCP inicio" value={props.form.dhcpInicio} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpInicio: Number(event.target.value) })} />
-        <input required type="number" min={1} max={254} placeholder="DHCP fim" value={props.form.dhcpFim} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpFim: Number(event.target.value) })} />
+        <select value={props.form.escopoDhcp} onChange={(event) => props.onUpdateForm({ ...props.form, escopoDhcp: event.target.value as DhcpScope })}>
+          <option value="DHCP">DHCP</option>
+          <option value="IP_FIXO">IP fixo</option>
+          <option value="DHCP_RELAY">DHCP relay</option>
+        </select>
+        <input disabled={props.form.escopoDhcp !== "DHCP"} required={props.form.escopoDhcp === "DHCP"} type="number" min={1} max={254} placeholder="DHCP inicio" value={props.form.dhcpInicio ?? ""} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpInicio: optionalNumber(event.target.value) })} />
+        <input disabled={props.form.escopoDhcp !== "DHCP"} required={props.form.escopoDhcp === "DHCP"} type="number" min={1} max={254} placeholder="DHCP fim" value={props.form.dhcpFim ?? ""} onChange={(event) => props.onUpdateForm({ ...props.form, dhcpFim: optionalNumber(event.target.value) })} />
         <input required type="number" min={1} max={254} placeholder="Gateway" value={props.form.gatewayTemplate} onChange={(event) => props.onUpdateForm({ ...props.form, gatewayTemplate: Number(event.target.value) })} />
         <input required placeholder="Tipo acesso internet" value={props.form.tipoAcessoInternet} onChange={(event) => props.onUpdateForm({ ...props.form, tipoAcessoInternet: event.target.value })} />
         <label className="checkbox-field">
@@ -563,6 +575,7 @@ function TemplateVlanManager(props: {
             <span>VLAN</span>
             <span>Nome</span>
             <span>Incremento</span>
+            <span>Escopo</span>
             <span>DHCP</span>
             <span>Gateway</span>
             <span>Status</span>
@@ -574,7 +587,8 @@ function TemplateVlanManager(props: {
               <span>{template.vlanId}</span>
               <span>{template.vlanNome}</span>
               <span>{template.baseOcteto}</span>
-              <span>{template.dhcpInicio}-{template.dhcpFim}</span>
+              <span>{formatDhcpScope(template.escopoDhcp)}</span>
+              <span>{formatDhcpRange(template)}</span>
               <span>{template.gatewayTemplate}</span>
               <span>{template.ativo ? "Ativo" : "Inativo"}</span>
               <button className="link" disabled={!props.canAdmin} onClick={() => props.onEdit(template)}>Editar</button>
@@ -650,13 +664,14 @@ function DataSection(props: {
 function VlanTable({ rows }: { rows: Array<(Vlan | GeneratedVlan) & { conflict?: boolean }> }) {
   return (
     <div className="table">
-      <div className="row head"><span>VLAN</span><span>Rede</span><span>Gateway</span><span>DHCP</span><span>Internet</span></div>
+      <div className="vlan-row head"><span>VLAN</span><span>Rede</span><span>Gateway</span><span>Escopo</span><span>DHCP</span><span>Internet</span></div>
       {rows.map((row) => (
-        <div className={row.conflict ? "row conflict" : "row"} key={`${row.vlanId}-${row.redeCidr}`}>
+        <div className={row.conflict ? "vlan-row conflict" : "vlan-row"} key={`${row.vlanId}-${row.redeCidr}`}>
           <span>{row.vlanId} - {row.vlanNome}</span>
           <span>{row.redeCidr}</span>
           <span>{row.gateway}</span>
-          <span>{row.dhcpInicio} / {row.dhcpFim}</span>
+          <span>{formatDhcpScope(row.escopoDhcp)}</span>
+          <span>{formatDhcpRange(row)}</span>
           <span>{row.conflict ? "Conflito" : row.tipoAcessoInternet}</span>
         </div>
       ))}
@@ -698,4 +713,19 @@ async function publicApi<T>(path: string, init?: RequestInit): Promise<T> {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Erro inesperado";
+}
+
+function optionalNumber(value: string) {
+  return value === "" ? null : Number(value);
+}
+
+function formatDhcpScope(scope: DhcpScope) {
+  if (scope === "IP_FIXO") return "IP fixo";
+  if (scope === "DHCP_RELAY") return "DHCP relay";
+  return "DHCP";
+}
+
+function formatDhcpRange(row: { escopoDhcp: DhcpScope; dhcpInicio: string | number | null; dhcpFim: string | number | null }) {
+  if (row.escopoDhcp !== "DHCP") return "-";
+  return `${row.dhcpInicio ?? "-"} / ${row.dhcpFim ?? "-"}`;
 }
