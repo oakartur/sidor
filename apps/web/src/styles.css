@@ -329,6 +329,11 @@ p {
   font-weight: 800;
 }
 
+.row.with-actions {
+  min-width: 900px;
+  grid-template-columns: 1.2fr 1fr 1fr 1.2fr 1fr 1fr;
+}
+
 .row.conflict {
   background: #fff0e6;
   color: #833b00;
@@ -396,8 +401,14 @@ p {
 .template-form .panel-title,
 .template-form .form-actions,
 .vlan-edit-form .panel-title,
-.vlan-edit-form .form-actions {
+.vlan-edit-form .form-actions,
+.equipment-edit-form .panel-title,
+.equipment-edit-form .form-actions {
   grid-column: 1 / -1;
+}
+
+.equipment-edit-form {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
 }
 
 .form-actions {
@@ -489,7 +500,8 @@ p {
     grid-template-columns: 1fr;
   }
 
-  .vlan-edit-form {
+  .vlan-edit-form,
+  .equipment-edit-form {
     grid-template-columns: 1fr;
   }
 

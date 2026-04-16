@@ -117,6 +117,36 @@ describe("VLAN generation", () => {
 });
 
 describe("rack switch generation", () => {
+  it("automatically marks only the first switch in rack 1 as CORE", () => {
+    const switches = generateRackSwitches({
+      vlan1Cidr: "10.23.160.0/24",
+      rackNum: 2,
+      qtdSwitches: 2,
+      existingSwitches: [
+        { hostname: "R1SWCORE", ipGerenciamento: "10.23.160.241", ordemGlobal: 1 },
+        { hostname: "R1SWA", ipGerenciamento: "10.23.160.242", ordemGlobal: 2 },
+        { hostname: "R1SWB", ipGerenciamento: "10.23.160.243", ordemGlobal: 3 },
+        { hostname: "R1SWC", ipGerenciamento: "10.23.160.244", ordemGlobal: 4 },
+        { hostname: "R1SWD", ipGerenciamento: "10.23.160.245", ordemGlobal: 5 }
+      ],
+      slotTemplates: [
+        { slotNum: 1, sufixoNormal: "A", sufixoR1: "CORE", papelSwitch: "CORE", ativo: true },
+        { slotNum: 2, sufixoNormal: "B", sufixoR1: "A", papelSwitch: "ACCESS", ativo: true }
+      ]
+    });
+
+    expect(switches[0]).toMatchObject({
+      hostname: "R2SWA",
+      ipGerenciamento: "10.23.160.246",
+      papelSwitch: "ACCESS"
+    });
+    expect(switches[1]).toMatchObject({
+      hostname: "R2SWB",
+      ipGerenciamento: "10.23.160.247",
+      papelSwitch: "ACCESS"
+    });
+  });
+
   it("detects duplicated hostnames and IPs against existing equipment", () => {
     expect(() =>
       generateRackSwitches({

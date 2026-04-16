@@ -55,6 +55,7 @@ interface Rack {
 
 interface Equipamento {
   id: string;
+  rackId: string;
   hostname: string;
   ipGerenciamento: string;
   localRack: string;
@@ -62,6 +63,7 @@ interface Equipamento {
   ordemNoRack: number;
   ordemGlobal: number;
   papelSwitch: string;
+  observacao?: string | null;
   editadoManual?: boolean;
   ativo: boolean;
 }
@@ -146,6 +148,19 @@ export function App() {
     dhcpInicio: "",
     dhcpFim: "",
     tipoAcessoInternet: "DIRETO",
+    ativo: true
+  });
+  const [editingEquipmentId, setEditingEquipmentId] = useState("");
+  const [equipmentForm, setEquipmentForm] = useState({
+    rackId: "",
+    hostname: "",
+    ipGerenciamento: "",
+    localRack: "",
+    rackNum: 1,
+    ordemNoRack: 1,
+    ordemGlobal: 1,
+    papelSwitch: "ACCESS",
+    observacao: "",
     ativo: true
   });
   const [siteForm, setSiteForm] = useState({
@@ -400,6 +415,73 @@ export function App() {
       dhcpInicio: "",
       dhcpFim: "",
       tipoAcessoInternet: "DIRETO",
+      ativo: true
+    });
+  }
+
+  async function saveEquipmentEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail || !editingEquipmentId) return;
+    await api(`/api/equipamentos/${editingEquipmentId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        rackId: equipmentForm.rackId,
+        hostname: equipmentForm.hostname,
+        ipGerenciamento: equipmentForm.ipGerenciamento,
+        localRack: equipmentForm.localRack,
+        rackNum: equipmentForm.rackNum,
+        ordemNoRack: equipmentForm.ordemNoRack,
+        ordemGlobal: equipmentForm.ordemGlobal,
+        papelSwitch: equipmentForm.papelSwitch,
+        observacao: equipmentForm.observacao || null,
+        ativo: equipmentForm.ativo
+      })
+    });
+    cancelEquipmentEdit();
+    setSwitchPreview([]);
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function deleteEquipment(equipment: Equipamento) {
+    if (!siteDetail) return;
+    const confirmed = window.confirm(`Excluir o equipamento ${equipment.hostname}?`);
+    if (!confirmed) return;
+    await api(`/api/equipamentos/${equipment.id}`, { method: "DELETE" });
+    cancelEquipmentEdit();
+    setSwitchPreview([]);
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  function editEquipment(equipment: Equipamento) {
+    setSwitchPreview([]);
+    const rack = siteDetail?.racks?.find((item) => item.id === equipment.rackId || item.rackNum === equipment.rackNum);
+    setEditingEquipmentId(equipment.id);
+    setEquipmentForm({
+      rackId: rack?.id ?? equipment.rackId,
+      hostname: equipment.hostname,
+      ipGerenciamento: equipment.ipGerenciamento,
+      localRack: rack?.localRack ?? equipment.localRack,
+      rackNum: rack?.rackNum ?? equipment.rackNum,
+      ordemNoRack: equipment.ordemNoRack,
+      ordemGlobal: equipment.ordemGlobal,
+      papelSwitch: equipment.papelSwitch,
+      observacao: equipment.observacao ?? "",
+      ativo: equipment.ativo
+    });
+  }
+
+  function cancelEquipmentEdit() {
+    setEditingEquipmentId("");
+    setEquipmentForm({
+      rackId: "",
+      hostname: "",
+      ipGerenciamento: "",
+      localRack: "",
+      rackNum: 1,
+      ordemNoRack: 1,
+      ordemGlobal: 1,
+      papelSwitch: "ACCESS",
+      observacao: "",
       ativo: true
     });
   }
@@ -671,9 +753,71 @@ export function App() {
             )}
 
             {activeTab === "equipamentos" && (
-              <DataSection title="Equipamentos">
-                <SwitchTable rows={siteDetail.equipamentos ?? []} />
-              </DataSection>
+              <section className="section-stack">
+                {editingEquipmentId && (
+                  <form className="panel equipment-edit-form" onSubmit={(event) => void saveEquipmentEdit(event)}>
+                    <div className="panel-title">
+                      <h3>Editar equipamento</h3>
+                      <p>Ajuste manual de hostname, IP, rack, ordem ou papel do switch.</p>
+                    </div>
+                    <Field label="Hostname">
+                      <input required value={equipmentForm.hostname} onChange={(event) => setEquipmentForm({ ...equipmentForm, hostname: event.target.value })} />
+                    </Field>
+                    <Field label="IP de gerenciamento">
+                      <input required value={equipmentForm.ipGerenciamento} onChange={(event) => setEquipmentForm({ ...equipmentForm, ipGerenciamento: event.target.value })} />
+                    </Field>
+                    <Field label="Rack">
+                      <select required value={equipmentForm.rackId} onChange={(event) => {
+                        const rack = siteDetail.racks?.find((item) => item.id === event.target.value);
+                        setEquipmentForm({
+                          ...equipmentForm,
+                          rackId: event.target.value,
+                          rackNum: rack?.rackNum ?? equipmentForm.rackNum,
+                          localRack: rack?.localRack ?? equipmentForm.localRack
+                        });
+                      }}>
+                        {siteDetail.racks?.map((rack) => (
+                          <option key={rack.id} value={rack.id}>Rack {rack.rackNum}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Local do rack">
+                      <input required value={equipmentForm.localRack} onChange={(event) => setEquipmentForm({ ...equipmentForm, localRack: event.target.value })} />
+                    </Field>
+                    <Field label="Ordem no rack">
+                      <input type="number" min={1} value={equipmentForm.ordemNoRack} onChange={(event) => setEquipmentForm({ ...equipmentForm, ordemNoRack: Number(event.target.value) })} />
+                    </Field>
+                    <Field label="Ordem global">
+                      <input type="number" min={1} value={equipmentForm.ordemGlobal} onChange={(event) => setEquipmentForm({ ...equipmentForm, ordemGlobal: Number(event.target.value) })} />
+                    </Field>
+                    <Field label="Papel do switch">
+                      <select value={equipmentForm.papelSwitch} onChange={(event) => setEquipmentForm({ ...equipmentForm, papelSwitch: event.target.value })}>
+                        <option value="ACCESS">ACCESS</option>
+                        <option value="CORE">CORE</option>
+                      </select>
+                    </Field>
+                    <Field label="Observação">
+                      <input value={equipmentForm.observacao} onChange={(event) => setEquipmentForm({ ...equipmentForm, observacao: event.target.value })} />
+                    </Field>
+                    <label className="checkbox-field">
+                      <input type="checkbox" checked={equipmentForm.ativo} onChange={(event) => setEquipmentForm({ ...equipmentForm, ativo: event.target.checked })} />
+                      Ativo
+                    </label>
+                    <div className="form-actions">
+                      <button disabled={!canWrite}>Salvar equipamento</button>
+                      <button type="button" className="ghost" onClick={cancelEquipmentEdit}>Cancelar</button>
+                    </div>
+                  </form>
+                )}
+                <DataSection title="Equipamentos">
+                  <SwitchTable
+                    rows={siteDetail.equipamentos ?? []}
+                    onEdit={editEquipment}
+                    onDelete={(equipment) => void deleteEquipment(equipment)}
+                    canWrite={canWrite}
+                  />
+                </DataSection>
+              </section>
             )}
 
             {activeTab === "internet" && (
@@ -897,17 +1041,31 @@ function VlanTable(props: {
   );
 }
 
-function SwitchTable({ rows }: { rows: Array<(Equipamento | GeneratedSwitch) & { conflict?: boolean }> }) {
+function SwitchTable(props: {
+  rows: Array<(Equipamento | GeneratedSwitch) & { conflict?: boolean }>;
+  canWrite?: boolean;
+  onEdit?: (equipment: Equipamento) => void;
+  onDelete?: (equipment: Equipamento) => void;
+}) {
+  const showActions = Boolean(props.onEdit || props.onDelete);
   return (
     <div className="table">
-      <div className="row head"><span>Hostname</span><span>IP</span><span>Rack</span><span>Ordem</span><span>Papel</span></div>
-      {rows.map((row) => (
-        <div className={row.conflict ? "row conflict" : "row"} key={`${row.hostname}-${row.ipGerenciamento}`}>
+      <div className={showActions ? "row with-actions head" : "row head"}>
+        <span>Hostname</span><span>IP</span><span>Rack</span><span>Ordem</span><span>Papel</span>{showActions && <span>Ações</span>}
+      </div>
+      {props.rows.map((row) => (
+        <div className={`${showActions ? "row with-actions" : "row"}${row.conflict ? " conflict" : ""}`} key={`${row.hostname}-${row.ipGerenciamento}`}>
           <span>{row.hostname}</span>
           <span>{row.ipGerenciamento}</span>
           <span>R{row.rackNum}</span>
           <span>{row.ordemGlobal}</span>
           <span>{row.conflict ? "Conflito" : row.papelSwitch}</span>
+          {showActions && "id" in row && (
+            <span className="row-actions">
+              <button className="link" disabled={!props.canWrite} onClick={() => props.onEdit?.(row)}>Editar</button>
+              <button className="link danger" disabled={!props.canWrite} onClick={() => props.onDelete?.(row)}>Excluir</button>
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -955,6 +1113,7 @@ function formatAuditAction(action: string) {
     UPDATE: "Edição",
     UPDATE_MANUAL: "Edição manual",
     DEACTIVATE: "Desativação",
+    DELETE: "Exclusão",
     GENERATE_VLANS: "Geração de VLANs",
     GENERATE_SWITCHES: "Geração de switches"
   };

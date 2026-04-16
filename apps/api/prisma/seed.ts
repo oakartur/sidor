@@ -18,7 +18,7 @@ async function main() {
 
   await prisma.templateSwitchSlot.createMany({
     data: [
-      { slotNum: 1, sufixoNormal: "A", sufixoR1: "CORE", papelSwitch: "CORE", ativo: true },
+      { slotNum: 1, sufixoNormal: "A", sufixoR1: "CORE", papelSwitch: "ACCESS", ativo: true },
       { slotNum: 2, sufixoNormal: "B", sufixoR1: "A", papelSwitch: "ACCESS", ativo: true },
       { slotNum: 3, sufixoNormal: "C", sufixoR1: "B", papelSwitch: "ACCESS", ativo: true },
       { slotNum: 4, sufixoNormal: "D", sufixoR1: "C", papelSwitch: "ACCESS", ativo: true },

@@ -217,7 +217,7 @@ export function generateRackSwitches(params: {
       rackNum,
       ordemNoRack,
       ordemGlobal,
-      papelSwitch: slot?.papelSwitch ?? (rackNum === 1 && ordemNoRack === 1 ? "CORE" : "ACCESS"),
+      papelSwitch: rackNum === 1 && ordemNoRack === 1 ? "CORE" : "ACCESS",
       tipoEquipamento: "SWITCH"
     });
   }

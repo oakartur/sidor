@@ -362,9 +362,9 @@ app.put("/api/equipamentos/:equipamentoId", requireRole("ADMIN", "OPERADOR"), as
 
 app.delete("/api/equipamentos/:equipamentoId", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
   const before = await prisma.equipamento.findUniqueOrThrow({ where: { id: req.params.equipamentoId } });
-  const after = await prisma.equipamento.update({ where: { id: req.params.equipamentoId }, data: { ativo: false, editadoManual: true } });
-  await audit(req, "equipamentos", after.id, "DEACTIVATE", before, after);
-  res.json(after);
+  await prisma.equipamento.delete({ where: { id: req.params.equipamentoId } });
+  await audit(req, "equipamentos", before.id, "DELETE", before, null);
+  res.json({ ok: true });
 }));
 
 app.get("/api/templates/vlans", asyncHandler(async (_req, res) => {
