@@ -136,6 +136,18 @@ export function App() {
   const [vlanPreview, setVlanPreview] = useState<GeneratedVlan[]>([]);
   const [switchPreview, setSwitchPreview] = useState<GeneratedSwitch[]>([]);
   const [selectedRackId, setSelectedRackId] = useState("");
+  const [editingVlanId, setEditingVlanId] = useState("");
+  const [vlanForm, setVlanForm] = useState({
+    vlanId: 1,
+    vlanNome: "",
+    redeCidr: "",
+    gateway: "",
+    escopoDhcp: "DHCP" as DhcpScope,
+    dhcpInicio: "",
+    dhcpFim: "",
+    tipoAcessoInternet: "DIRETO",
+    ativo: true
+  });
   const [siteForm, setSiteForm] = useState({
     regional: "",
     bandeira: "",
@@ -161,6 +173,7 @@ export function App() {
 
   const canWrite = user?.role === "ADMIN" || user?.role === "OPERADOR";
   const canAdmin = user?.role === "ADMIN";
+  const vlanPreviewHasConflicts = vlanPreview.some((vlan) => vlan.conflict);
   const derivedSiteCode = useMemo(
     () => [siteForm.regional, siteForm.bandeira, siteForm.loja].map((part) => part.trim()).filter(Boolean).join("-"),
     [siteForm.regional, siteForm.bandeira, siteForm.loja]
@@ -289,13 +302,28 @@ export function App() {
   async function createRack(event: FormEvent) {
     event.preventDefault();
     if (!siteDetail) return;
+    setError("");
     const rack = await api<Rack>(`/api/sites/${siteDetail.id}/racks`, {
       method: "POST",
       body: JSON.stringify(rackForm)
     });
+    let shouldShowSwitchPreview = false;
+    try {
+      await api(`/api/racks/${rack.id}/switches/generate`, {
+        method: "POST",
+        body: JSON.stringify({ confirm: true })
+      });
+      setSwitchPreview([]);
+    } catch (err) {
+      setError(`Rack criado, mas a geração automática dos switches falhou: ${errorMessage(err)}`);
+      shouldShowSwitchPreview = true;
+    }
     setRackForm({ rackNum: rackForm.rackNum + 1, localRack: "", qtdSwitches: 1 });
     setSelectedRackId(rack.id);
     await loadSiteDetail(siteDetail.id);
+    if (shouldShowSwitchPreview) {
+      await previewSwitches(rack.id);
+    }
   }
 
   async function previewVlans() {
@@ -309,7 +337,71 @@ export function App() {
       method: "POST",
       body: JSON.stringify({ template: "PADRAO", confirm: true })
     });
+    setVlanPreview([]);
     await loadSiteDetail(siteDetail.id);
+  }
+
+  async function saveVlanEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!siteDetail || !editingVlanId) return;
+    await api(`/api/vlans/${editingVlanId}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        vlanId: vlanForm.vlanId,
+        vlanNome: vlanForm.vlanNome,
+        redeCidr: vlanForm.redeCidr,
+        gateway: vlanForm.gateway,
+        escopoDhcp: vlanForm.escopoDhcp,
+        dhcpInicio: vlanForm.escopoDhcp === "DHCP" ? vlanForm.dhcpInicio : null,
+        dhcpFim: vlanForm.escopoDhcp === "DHCP" ? vlanForm.dhcpFim : null,
+        tipoAcessoInternet: vlanForm.tipoAcessoInternet,
+        ativo: vlanForm.ativo
+      })
+    });
+    cancelVlanEdit();
+    setVlanPreview([]);
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  async function deleteVlan(vlan: Vlan) {
+    if (!siteDetail) return;
+    const confirmed = window.confirm(`Excluir a VLAN ${vlan.vlanId} - ${vlan.vlanNome}?`);
+    if (!confirmed) return;
+    await api(`/api/vlans/${vlan.id}`, { method: "DELETE" });
+    cancelVlanEdit();
+    setVlanPreview([]);
+    await loadSiteDetail(siteDetail.id);
+  }
+
+  function editVlan(vlan: Vlan) {
+    setVlanPreview([]);
+    setEditingVlanId(vlan.id);
+    setVlanForm({
+      vlanId: vlan.vlanId,
+      vlanNome: vlan.vlanNome,
+      redeCidr: vlan.redeCidr,
+      gateway: vlan.gateway,
+      escopoDhcp: vlan.escopoDhcp,
+      dhcpInicio: vlan.dhcpInicio ?? "",
+      dhcpFim: vlan.dhcpFim ?? "",
+      tipoAcessoInternet: vlan.tipoAcessoInternet,
+      ativo: vlan.ativo
+    });
+  }
+
+  function cancelVlanEdit() {
+    setEditingVlanId("");
+    setVlanForm({
+      vlanId: 1,
+      vlanNome: "",
+      redeCidr: "",
+      gateway: "",
+      escopoDhcp: "DHCP",
+      dhcpInicio: "",
+      dhcpFim: "",
+      tipoAcessoInternet: "DIRETO",
+      ativo: true
+    });
   }
 
   async function previewSwitches(rackId = selectedRackId) {
@@ -474,15 +566,71 @@ export function App() {
             </div>
 
             {activeTab === "vlans" && (
-              <DataSection
-                title="VLANs"
-                actionLabel="Pré-visualizar VLANs"
-                onAction={previewVlans}
-                secondaryLabel={vlanPreview.length ? "Confirmar geração" : undefined}
-                onSecondary={generateVlansNow}
-              >
-                <VlanTable rows={vlanPreview.length ? vlanPreview : siteDetail.vlans ?? []} />
-              </DataSection>
+              <section className="section-stack">
+                {editingVlanId && (
+                  <form className="panel vlan-edit-form" onSubmit={(event) => void saveVlanEdit(event)}>
+                    <div className="panel-title">
+                      <h3>Editar VLAN</h3>
+                      <p>Ajuste pontual de uma VLAN gerada pelo template.</p>
+                    </div>
+                    <Field label="ID da VLAN">
+                      <input required type="number" min={1} value={vlanForm.vlanId} onChange={(event) => setVlanForm({ ...vlanForm, vlanId: Number(event.target.value) })} />
+                    </Field>
+                    <Field label="Nome da VLAN">
+                      <input required value={vlanForm.vlanNome} onChange={(event) => setVlanForm({ ...vlanForm, vlanNome: event.target.value })} />
+                    </Field>
+                    <Field label="Rede CIDR">
+                      <input required value={vlanForm.redeCidr} onChange={(event) => setVlanForm({ ...vlanForm, redeCidr: event.target.value })} />
+                    </Field>
+                    <Field label="Gateway">
+                      <input required value={vlanForm.gateway} onChange={(event) => setVlanForm({ ...vlanForm, gateway: event.target.value })} />
+                    </Field>
+                    <Field label="Escopo de endereçamento">
+                      <select value={vlanForm.escopoDhcp} onChange={(event) => setVlanForm({ ...vlanForm, escopoDhcp: event.target.value as DhcpScope })}>
+                        <option value="DHCP">DHCP</option>
+                        <option value="IP_FIXO">IP fixo</option>
+                        <option value="DHCP_RELAY">DHCP relay</option>
+                      </select>
+                    </Field>
+                    <Field label="DHCP início" hint={vlanForm.escopoDhcp === "DHCP" ? "Endereço inicial da faixa." : "Não se aplica a este escopo."}>
+                      <input disabled={vlanForm.escopoDhcp !== "DHCP"} required={vlanForm.escopoDhcp === "DHCP"} value={vlanForm.dhcpInicio} onChange={(event) => setVlanForm({ ...vlanForm, dhcpInicio: event.target.value })} />
+                    </Field>
+                    <Field label="DHCP fim" hint={vlanForm.escopoDhcp === "DHCP" ? "Endereço final da faixa." : "Não se aplica a este escopo."}>
+                      <input disabled={vlanForm.escopoDhcp !== "DHCP"} required={vlanForm.escopoDhcp === "DHCP"} value={vlanForm.dhcpFim} onChange={(event) => setVlanForm({ ...vlanForm, dhcpFim: event.target.value })} />
+                    </Field>
+                    <Field label="Acesso à internet">
+                      <input required value={vlanForm.tipoAcessoInternet} onChange={(event) => setVlanForm({ ...vlanForm, tipoAcessoInternet: event.target.value })} />
+                    </Field>
+                    <label className="checkbox-field">
+                      <input type="checkbox" checked={vlanForm.ativo} onChange={(event) => setVlanForm({ ...vlanForm, ativo: event.target.checked })} />
+                      Ativa
+                    </label>
+                    <div className="form-actions">
+                      <button disabled={!canWrite}>Salvar VLAN</button>
+                      <button type="button" className="ghost" onClick={cancelVlanEdit}>Cancelar</button>
+                    </div>
+                  </form>
+                )}
+                <DataSection
+                  title={vlanPreview.length ? "Prévia de VLANs" : "VLANs"}
+                  actionLabel={vlanPreview.length ? "Limpar prévia" : "Pré-visualizar VLANs"}
+                  onAction={vlanPreview.length ? () => setVlanPreview([]) : previewVlans}
+                  secondaryLabel={vlanPreview.length && !vlanPreviewHasConflicts ? "Confirmar geração" : undefined}
+                  onSecondary={generateVlansNow}
+                >
+                  {vlanPreviewHasConflicts && (
+                    <div className="alert">
+                      A prévia encontrou VLANs já existentes. Limpe a prévia, edite ou exclua as VLANs necessárias e gere novamente.
+                    </div>
+                  )}
+                  <VlanTable
+                    rows={vlanPreview.length ? vlanPreview : siteDetail.vlans ?? []}
+                    onEdit={vlanPreview.length ? undefined : editVlan}
+                    onDelete={vlanPreview.length ? undefined : (vlan) => void deleteVlan(vlan)}
+                    canWrite={canWrite}
+                  />
+                </DataSection>
+              </section>
             )}
 
             {activeTab === "racks" && (
@@ -497,7 +645,7 @@ export function App() {
                   <Field label="Quantidade de switches">
                     <input type="number" min={1} value={rackForm.qtdSwitches} onChange={(event) => setRackForm({ ...rackForm, qtdSwitches: Number(event.target.value) })} />
                   </Field>
-                  <button disabled={!canWrite}>Adicionar rack</button>
+                  <button disabled={!canWrite}>Adicionar rack e gerar switches</button>
                 </form>
                 <div className="table">
                   <div className="row head"><span>Rack</span><span>Local</span><span>Switches</span><span>Ação</span></div>
@@ -717,18 +865,32 @@ function Field(props: { label: string; hint?: string; children: ReactNode }) {
   );
 }
 
-function VlanTable({ rows }: { rows: Array<(Vlan | GeneratedVlan) & { conflict?: boolean }> }) {
+function VlanTable(props: {
+  rows: Array<(Vlan | GeneratedVlan) & { conflict?: boolean }>;
+  canWrite?: boolean;
+  onEdit?: (vlan: Vlan) => void;
+  onDelete?: (vlan: Vlan) => void;
+}) {
+  const showActions = Boolean(props.onEdit || props.onDelete);
   return (
     <div className="table">
-      <div className="vlan-row head"><span>VLAN</span><span>Rede</span><span>Gateway</span><span>Escopo</span><span>DHCP</span><span>Internet</span></div>
-      {rows.map((row) => (
-        <div className={row.conflict ? "vlan-row conflict" : "vlan-row"} key={`${row.vlanId}-${row.redeCidr}`}>
+      <div className={showActions ? "vlan-row with-actions head" : "vlan-row head"}>
+        <span>VLAN</span><span>Rede</span><span>Gateway</span><span>Escopo</span><span>DHCP</span><span>Internet</span>{showActions && <span>Ações</span>}
+      </div>
+      {props.rows.map((row) => (
+        <div className={`${showActions ? "vlan-row with-actions" : "vlan-row"}${row.conflict ? " conflict" : ""}`} key={`${row.vlanId}-${row.redeCidr}`}>
           <span>{row.vlanId} - {row.vlanNome}</span>
           <span>{row.redeCidr}</span>
           <span>{row.gateway}</span>
           <span>{formatDhcpScope(row.escopoDhcp)}</span>
           <span>{formatDhcpRange(row)}</span>
           <span>{row.conflict ? "Conflito" : row.tipoAcessoInternet}</span>
+          {showActions && "id" in row && (
+            <span className="row-actions">
+              <button className="link" disabled={!props.canWrite} onClick={() => props.onEdit?.(row)}>Editar</button>
+              <button className="link danger" disabled={!props.canWrite} onClick={() => props.onDelete?.(row)}>Excluir</button>
+            </span>
+          )}
         </div>
       ))}
     </div>

@@ -228,6 +228,13 @@ app.put("/api/vlans/:vlanId", requireRole("ADMIN", "OPERADOR"), asyncHandler(asy
   res.json(after);
 }));
 
+app.delete("/api/vlans/:vlanId", requireRole("ADMIN", "OPERADOR"), asyncHandler(async (req, res) => {
+  const before = await prisma.vlan.findUniqueOrThrow({ where: { id: req.params.vlanId } });
+  await prisma.vlan.delete({ where: { id: req.params.vlanId } });
+  await audit(req, "vlans", before.id, "DELETE", before, null, req.body?.motivo);
+  res.json({ ok: true });
+}));
+
 const rackSchema = z.object({
   rackNum: z.number().int().positive(),
   localRack: z.string().min(1),
@@ -481,6 +488,9 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     return res.status(409).json({ error: "Registro duplicado", meta: error.meta });
+  }
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+    return res.status(409).json({ error: "Registro possui vínculos e não pode ser excluído", meta: error.meta });
   }
   logger.error(error);
   return res.status(500).json({ error: "Erro interno" });

@@ -343,6 +343,11 @@ p {
   border-bottom: 1px solid #edf1ef;
 }
 
+.vlan-row.with-actions {
+  min-width: 1040px;
+  grid-template-columns: 1.2fr 1fr 1fr 0.9fr 1.2fr 1fr 1fr;
+}
+
 .vlan-row:last-child {
   border-bottom: 0;
 }
@@ -364,6 +369,16 @@ p {
   text-align: left;
 }
 
+.link.danger {
+  color: #a6421f;
+}
+
+.row-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .rack-form {
   display: grid;
   grid-template-columns: 110px 1fr 130px auto;
@@ -374,8 +389,14 @@ p {
   grid-template-columns: repeat(4, minmax(140px, 1fr));
 }
 
+.vlan-edit-form {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
 .template-form .panel-title,
-.template-form .form-actions {
+.template-form .form-actions,
+.vlan-edit-form .panel-title,
+.vlan-edit-form .form-actions {
   grid-column: 1 / -1;
 }
 
@@ -465,6 +486,10 @@ p {
   }
 
   .template-form {
+    grid-template-columns: 1fr;
+  }
+
+  .vlan-edit-form {
     grid-template-columns: 1fr;
   }
 
